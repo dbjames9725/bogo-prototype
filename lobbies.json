@@ -1,0 +1,46 @@
+{
+  "bogo_lv72n6q": {
+    "id": "bogo_lv72n6q",
+    "itemPrice": 100,
+    "userA": {
+      "paymentIntentId": "pi_3U40x9AsLqGDr3xw0haajYgx",
+      "chargeAmount": 54.32
+    },
+    "status": "WAITING_FOR_PARTNER"
+  },
+  "bogo_kw350d0": {
+    "id": "bogo_kw350d0",
+    "itemPrice": 100,
+    "userA": {
+      "paymentIntentId": "pi_3U416jAsLqGDr3xw0CQEHvcJ",
+      "chargeAmount": 54.32
+    },
+    "status": "COMPLETED",
+    "userB": {
+      "paymentIntentId": "pi_3U4172AsLqGDr3xw1BWteAtr",
+      "chargeAmount": 54.32
+    }
+  },
+  "bogo_nc50qii": {
+    "id": "bogo_nc50qii",
+    "itemPrice": 100,
+    "userA": {
+      "paymentIntentId": "pi_3U41kOAsLqGDr3xw0Zap9aHs",
+      "chargeAmount": 54.32
+    },
+    "status": "CANCELLED",
+    "createdAt": 1786639491238,
+    "expiresAt": 0
+  },
+  "bogo_w9zfbm4": {
+    "id": "bogo_w9zfbm4",
+    "itemPrice": 100,
+    "userA": {
+      "paymentIntentId": "pi_3U41pBAsLqGDr3xw1r0dut8J",
+      "chargeAmount": 54.32
+    },
+    "status": "WAITING_FOR_PARTNER",
+    "createdAt": 1786639788783,
+    "expiresAt": 1786726188783
+  }
+}
