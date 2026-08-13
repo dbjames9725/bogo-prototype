@@ -1,1 +1,0 @@
-﻿{"crons":[{"path":"/api/cron/cancel-expired","schedule":"0 0 * * *"}]}
