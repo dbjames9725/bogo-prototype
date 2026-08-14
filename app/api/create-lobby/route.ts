@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { stripe } from '@/lib/stripe';
-import { getLobbies, saveLobbies } from '@/lib/lobbies';
+import { supabase } from '@/lib/supabase';
 
 export async function POST(req: Request) {
   try {
@@ -20,26 +20,33 @@ export async function POST(req: Request) {
     const lobbyId = `bogo_${Math.random().toString(36).substring(2, 9)}`;
     const now = Date.now();
     const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+    const expiresAt = now + TWENTY_FOUR_HOURS;
 
-    const lobbies = getLobbies();
-    lobbies[lobbyId] = {
-      id: lobbyId,
-      itemPrice,
-      userA: {
-        paymentIntentId: paymentIntent.id,
-        chargeAmount: totalUserChargeCents / 100,
-      },
-      status: 'WAITING_FOR_PARTNER',
-      createdAt: now,
-      expiresAt: now + TWENTY_FOUR_HOURS, // Set 24-hour expiration
-    };
-    saveLobbies(lobbies);
+    // Insert new lobby directly into Supabase
+    const { error } = await supabase
+      .from('lobbies')
+      .insert({
+        id: lobbyId,
+        item_name: 'BOGO Offer Item',
+        total_price: itemPrice,
+        host_share: splitPrice,
+        partner_share: splitPrice,
+        host_payment_intent_id: paymentIntent.id,
+        status: 'WAITING_FOR_PARTNER',
+        created_at: new Date(now).toISOString(),
+        expires_at: new Date(expiresAt).toISOString(),
+      });
+
+    if (error) {
+      console.error('Supabase Error:', error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
 
     return NextResponse.json({
       lobbyId,
       clientSecret: paymentIntent.client_secret,
       chargeAmount: (totalUserChargeCents / 100).toFixed(2),
-      expiresAt: lobbies[lobbyId].expiresAt,
+      expiresAt,
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
