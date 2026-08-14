@@ -6,35 +6,35 @@ export async function POST(req: Request) {
   try {
     const { lobbyId } = await req.json();
 
-    // 1. Fetch the lobby from Supabase
+    // 1. Fetch lobby from Supabase
     const { data: lobby, error: fetchError } = await supabase
       .from('lobbies')
       .select('*')
       .eq('id', lobbyId)
       .single();
 
-    if (fetchError || !lobby || lobby.status !== 'WAITING_FOR_PARTNER') {
-      return NextResponse.json({ error: 'Lobby unavailable or expired' }, { status: 400 });
+    if (fetchError || !lobby) {
+      return NextResponse.json({ error: 'Lobby not found' }, { status: 404 });
     }
 
-    // Calculate Partner charge based on stored price shares
-    const splitPrice = Number(lobby.partner_share);
-    const platformFee = (Number(lobby.total_price) * 0.05) / 2;
+    const itemPrice = Number(lobby.total_price);
+    const splitPrice = itemPrice / 2;
+    const platformFee = (itemPrice * 0.05) / 2;
     const stripeFee = 1.82;
     const totalUserChargeCents = Math.round((splitPrice + platformFee + stripeFee) * 100);
 
     // 2. Create Stripe PaymentIntent for User B
-    const paymentIntentB = await stripe.paymentIntents.create({
+    const paymentIntent = await stripe.paymentIntents.create({
       amount: totalUserChargeCents,
       currency: 'usd',
       capture_method: 'manual',
     });
 
-    // 3. Update lobby record in Supabase with Partner payment intent ID
+    // 3. Save User B's Payment Intent ID into Supabase
     const { error: updateError } = await supabase
       .from('lobbies')
       .update({
-        partner_payment_intent_id: paymentIntentB.id,
+        partner_payment_intent_id: paymentIntent.id,
       })
       .eq('id', lobbyId);
 
@@ -44,11 +44,12 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({
-      clientSecret: paymentIntentB.client_secret,
+      clientSecret: paymentIntent.client_secret,
       chargeAmount: (totalUserChargeCents / 100).toFixed(2),
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+
 
