@@ -4,9 +4,13 @@ import { supabase } from '@/lib/supabase';
 
 export async function POST(req: Request) {
   try {
-    const { lobbyId } = await req.json();
+    const { lobbyId, userBAddress } = await req.json();
 
-    // 1. Fetch lobby from Supabase
+    if (!lobbyId) {
+      return NextResponse.json({ error: 'Missing lobbyId' }, { status: 400 });
+    }
+
+    // 1. Fetch lobby record from Supabase
     const { data: lobby, error: fetchError } = await supabase
       .from('lobbies')
       .select('*')
@@ -23,17 +27,20 @@ export async function POST(req: Request) {
     const stripeFee = 1.82;
     const totalUserChargeCents = Math.round((splitPrice + platformFee + stripeFee) * 100);
 
-    // 2. ALWAYS create a brand new Payment Intent for User B to prevent state contamination
+    // 2. Create a fresh Payment Intent for User B
     const paymentIntent = await stripe.paymentIntents.create({
       amount: totalUserChargeCents,
       currency: 'usd',
       capture_method: 'manual',
     });
 
-    // 3. Save the new Payment Intent ID to Supabase
+    // 3. Update lobby with User B PaymentIntent ID and Shipping Address
     const { error: updateError } = await supabase
       .from('lobbies')
-      .update({ partner_payment_intent_id: paymentIntent.id })
+      .update({
+        partner_payment_intent_id: paymentIntent.id,
+        user_b_address: userBAddress || null,
+      })
       .eq('id', lobbyId);
 
     if (updateError) {
@@ -49,6 +56,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
-
-
-
