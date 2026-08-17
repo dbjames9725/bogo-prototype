@@ -1,15 +1,24 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
+import { loadStripe } from '@stripe/stripe-js';
+import { Elements } from '@stripe/react-stripe-js';
+import CheckoutForm from '@/components/CheckoutForm';
+
+const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '');
 
 export default function HomePage() {
   const [itemPrice, setItemPrice] = useState<number>(100);
   const [itemName, setItemName] = useState<string>('BOGO Offer Item');
   const [loading, setLoading] = useState(false);
-  const [lobbyData, setLobbyData] = useState<any>(null);
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [chargeAmount, setChargeAmount] = useState<string | null>(null);
+  const [lobbyId, setLobbyId] = useState<string | null>(null);
+  const [isAuthorized, setIsAuthorized] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleStartLobby() {
+  // Step 1: Create the PaymentIntent for Host
+  async function handleCreateLobbyIntent() {
     if (!itemPrice || itemPrice <= 0) {
       setError('Please enter a valid item price.');
       return;
@@ -30,11 +39,13 @@ export default function HomePage() {
 
       const data = await res.json();
 
-      if (!res.ok) {
+      if (!res.ok || data.error) {
         throw new Error(data.error || 'Failed to create lobby');
       }
 
-      setLobbyData(data);
+      setClientSecret(data.clientSecret);
+      setChargeAmount(data.chargeAmount);
+      setLobbyId(data.lobbyId);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -42,51 +53,58 @@ export default function HomePage() {
     }
   }
 
-  return (
-    <main style={{ padding: '2rem', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto' }}>
-      <h1>BOGO Split Offer</h1>
-      <p>Split any BOGO purchase 50/50 with a verified partner!</p>
+  // Step 2: Fired after Host successfully authorizes their card hold
+  const handleHostPaymentSuccess = async () => {
+    setIsAuthorized(true);
+  };
 
-      {!lobbyData ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1.5rem' }}>
+  const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}/lobby/${lobbyId}` : '';
+
+  return (
+    <main className="max-w-xl mx-auto p-6 my-10 bg-white rounded-xl shadow-lg border border-gray-100 font-sans">
+      <h1 className="text-2xl font-bold text-gray-900 mb-1">BOGO Split Offer</h1>
+      <p className="text-gray-500 mb-6">Split any BOGO purchase 50/50 with a verified partner!</p>
+
+      {error && (
+        <div className="p-3 mb-4 bg-red-100 text-red-800 text-sm rounded-lg border border-red-300">
+          ⚠️ {error}
+        </div>
+      )}
+
+      {!clientSecret ? (
+        <div className="space-y-4">
           <div>
-            <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.5rem' }}>Item Name:</label>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Item Name:</label>
             <input
               type="text"
               value={itemName}
               onChange={(e) => setItemName(e.target.value)}
               placeholder="e.g. Pro Runner Sneakers"
-              style={{ width: '100%', padding: '10px', fontSize: '16px', borderRadius: '6px', border: '1px solid #ccc' }}
+              className="w-full p-2.5 border rounded-lg text-gray-800 border-gray-300"
             />
           </div>
 
           <div>
-            <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.5rem' }}>Total Retail Item Price ($):</label>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Total Retail Item Price ($):</label>
             <input
               type="number"
               min="1"
               step="0.01"
               value={itemPrice}
               onChange={(e) => setItemPrice(Number(e.target.value))}
-              style={{ width: '100%', padding: '10px', fontSize: '16px', borderRadius: '6px', border: '1px solid #ccc' }}
+              className="w-full p-2.5 border rounded-lg text-gray-800 border-gray-300"
             />
           </div>
 
-          {/* Quick preset buttons */}
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <div className="flex gap-2">
             {[50, 75, 100, 150, 200].map((price) => (
               <button
                 key={price}
                 type="button"
                 onClick={() => setItemPrice(price)}
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: '4px',
-                  border: '1px solid #0070f3',
-                  backgroundColor: itemPrice === price ? '#0070f3' : 'transparent',
-                  color: itemPrice === price ? 'white' : '#0070f3',
-                  cursor: 'pointer'
-                }}
+                className={`px-3 py-1.5 text-sm rounded-md border ${
+                  itemPrice === price ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-blue-600 border-gray-200'
+                }`}
               >
                 ${price}
               </button>
@@ -94,34 +112,32 @@ export default function HomePage() {
           </div>
 
           <button
-            onClick={handleStartLobby}
+            onClick={handleCreateLobbyIntent}
             disabled={loading}
-            style={{
-              marginTop: '1rem',
-              padding: '12px 24px',
-              fontSize: '16px',
-              backgroundColor: '#0070f3',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: loading ? 'not-allowed' : 'pointer',
-            }}
+            className="w-full bg-blue-600 text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition disabled:opacity-50 mt-4 cursor-pointer"
           >
-            {loading ? 'Creating Lobby...' : `Start BOGO Lobby for $${itemPrice}`}
+            {loading ? 'Initializing Lobby...' : `Start BOGO Lobby for $${itemPrice}`}
           </button>
-          {error && <p style={{ color: 'red' }}>{error}</p>}
+        </div>
+      ) : !isAuthorized ? (
+        <div className="mt-4 min-h-[250px]">
+          <h2 className="text-lg font-semibold mb-1 text-gray-800">Authorize Your 50% Share (${chargeAmount})</h2>
+          <p className="text-sm text-gray-500 mb-4">You will only be charged if a partner joins and authorizes their share within 24 hours.</p>
+          <Elements key={clientSecret} stripe={stripePromise} options={{ clientSecret }}>
+            <CheckoutForm onSuccess={handleHostPaymentSuccess} buttonText={`Authorize $${chargeAmount} Hold & Get Share Link`} />
+          </Elements>
         </div>
       ) : (
-        <div style={{ marginTop: '1.5rem', padding: '1rem', border: '1px solid #ccc', borderRadius: '8px' }}>
-          <h2>Lobby Created! 🎉</h2>
-          <p><strong>Item:</strong> {lobbyData.itemName}</p>
-          <p><strong>Retail Price:</strong> ${lobbyData.itemPrice}</p>
-          <p><strong>Your 50% Split Charge:</strong> ${lobbyData.chargeAmount}</p>
-          <p><strong>Share Link for Partner:</strong></p>
+        <div className="p-6 bg-blue-50 rounded-xl border border-blue-200 space-y-4">
+          <h2 className="text-xl font-bold text-blue-900">Lobby Created & Payment Authorized! 🎉</h2>
+          <p className="text-sm text-blue-800">
+            Your payment hold of <strong>${chargeAmount}</strong> is placed. Share this link with your partner:
+          </p>
           <input
             readOnly
-            value={`${typeof window !== 'undefined' ? window.location.origin : ''}/lobby/${lobbyData.lobbyId}`}
-            style={{ width: '100%', padding: '8px', marginBottom: '1rem' }}
+            value={shareUrl}
+            onClick={(e) => (e.target as HTMLInputElement).select()}
+            className="w-full p-3 bg-white border border-blue-300 rounded-lg text-gray-800 text-sm font-mono"
           />
         </div>
       )}
