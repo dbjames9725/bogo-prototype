@@ -19,39 +19,44 @@ export default function CheckoutForm({ onSuccess, buttonText }: CheckoutFormProp
     e.preventDefault();
 
     if (!stripe || !elements) {
+      setErrorMessage("Stripe hasn't loaded yet. Please wait a second and try again.");
       return;
     }
 
     setLoading(true);
     setErrorMessage(null);
 
-    // Confirm payment authorization without full-page redirect
-    const { error, paymentIntent } = await stripe.confirmPayment({
-      elements,
-      confirmParams: {
-        return_url: window.location.href,
-      },
-      redirect: 'if_required', // Prevents hanging on 'Proceeding...'
-    });
+    try {
+      console.log('Confirming Stripe payment...');
+      const { error, paymentIntent } = await stripe.confirmPayment({
+        elements,
+        confirmParams: {
+          return_url: window.location.href,
+        },
+        redirect: 'if_required',
+      });
 
-    if (error) {
-      setErrorMessage(error.message || 'Payment failed. Please try again.');
-      setLoading(false);
-      return;
-    }
-
-    // Check if the payment hold was authorized successfully
-    if (paymentIntent && (paymentIntent.status === 'requires_capture' || paymentIntent.status === 'succeeded')) {
-      try {
-        await onSuccess();
-      } catch (err: any) {
-        setErrorMessage(err.message || 'Failed to complete lobby confirmation.');
+      if (error) {
+        console.error('Stripe confirm error:', error);
+        setErrorMessage(error.message || 'Payment authorization failed.');
+        setLoading(false);
+        return;
       }
-    } else {
-      setErrorMessage('Payment hold could not be processed.');
-    }
 
-    setLoading(false);
+      console.log('PaymentIntent status:', paymentIntent?.status);
+
+      if (paymentIntent && (paymentIntent.status === 'requires_capture' || paymentIntent.status === 'succeeded')) {
+        console.log('Payment hold successful! Executing confirm-match...');
+        await onSuccess();
+      } else {
+        setErrorMessage(`Unexpected payment status: ${paymentIntent?.status}`);
+      }
+    } catch (err: any) {
+      console.error('Checkout error:', err);
+      setErrorMessage(err.message || 'An unexpected error occurred during checkout.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -59,8 +64,8 @@ export default function CheckoutForm({ onSuccess, buttonText }: CheckoutFormProp
       <PaymentElement />
 
       {errorMessage && (
-        <div className="p-3 bg-red-50 text-red-700 text-sm rounded-lg border border-red-200">
-          {errorMessage}
+        <div className="p-3 my-2 bg-red-100 text-red-800 text-sm rounded-lg border border-red-300 font-semibold">
+          ⚠️ {errorMessage}
         </div>
       )}
 
