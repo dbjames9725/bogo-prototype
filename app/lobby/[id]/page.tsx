@@ -1,100 +1,11 @@
-'use client';
-
-import React, { useState, useEffect, use } from 'react';
-import { loadStripe } from '@stripe/stripe-js';
-import { Elements } from '@stripe/react-stripe-js';
-import CheckoutForm from '@/components/CheckoutForm';
-
-const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '');
-
-export default function LobbyPage({ params }: { params: Promise<{ id: string }> }) {
-  // Unwrap the asynchronous params Promise using React.use()
-  const { id } = use(params);
-
-  const [lobby, setLobby] = useState<any>(null);
-  const [clientSecret, setClientSecret] = useState<string | null>(null);
-  const [chargeAmount, setChargeAmount] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [isCompleted, setIsCompleted] = useState(false);
-
-  useEffect(() => {
-    fetch(`/api/lobby/${id}`)
-      .then((res) => res.json())
-      .then((data) => {
-        setLobby(data);
-        if (data.status === 'COMPLETED') {
-          setIsCompleted(true);
-        }
-        setLoading(false);
-      });
-  }, [id]);
-
-  const joinLobby = async () => {
-    const res = await fetch('/api/join-lobby', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lobbyId: id }),
-    });
-    const data = await res.json();
-    if (data.error) {
-      alert(data.error);
-      return;
-    }
-    setClientSecret(data.clientSecret);
-    setChargeAmount(data.chargeAmount);
-  };
-
-  const handleUserBPaymentSuccess = async () => {
-    const res = await fetch('/api/confirm-match', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lobbyId: id }),
-    });
-    const data = await res.json();
-    if (data.success) {
-      setIsCompleted(true);
-    }
-  };
-
-  if (loading) return <div className="p-10 text-center font-sans">Loading Lobby...</div>;
-  if (!lobby || lobby.error) return <div className="p-10 text-center font-sans text-red-500">Lobby not found or expired!</div>;
-
-  return (
-    <main className="max-w-xl mx-auto p-6 my-10 bg-white rounded-xl shadow-lg border border-gray-100 font-sans">
-      <div className="border-b pb-4 mb-4">
-        <h1 className="text-2xl font-bold text-gray-900">Join BOGO Split Deal</h1>
-        <p className="text-gray-500">Item: Pro Runner Sneakers ($100 Retail Value)</p>
-      </div>
-
-      {isCompleted ? (
-        <div className="p-6 bg-emerald-50 rounded-xl border border-emerald-200 text-center space-y-2">
-          <h2 className="text-2xl font-bold text-emerald-900">🎉 BOGO Split Complete!</h2>
-          <p className="text-emerald-800">Both payments have been captured successfully. Your orders are confirmed!</p>
-        </div>
-      ) : (
-        <>
-          {!clientSecret ? (
-            <div className="border p-5 rounded-xl bg-blue-50 border-blue-200">
-              <p className="text-sm text-blue-900 mb-4 font-medium">
-                User A is waiting for a BOGO partner! Pay <strong>$54.32</strong> to complete the order and get your item.
-              </p>
-              <button
-                onClick={joinLobby}
-                className="w-full bg-blue-600 text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition"
-              >
-                Join Split & Pay $54.32
-              </button>
-            </div>
-          ) : (
-            <div className="mt-4">
-              <h2 className="text-lg font-semibold mb-2 text-gray-800">Complete Your Payment (${chargeAmount})</h2>
-              <Elements stripe={stripePromise} options={{ clientSecret }}>
-                <CheckoutForm onSuccess={handleUserBPaymentSuccess} buttonText={`Pay $${chargeAmount} & Finalize Order`} />
-              </Elements>
-            </div>
-          )}
-        </>
-      )}
-    </main>
-  );
-}
+{clientSecret && (
+  <div className="mt-4 min-h-[250px]">
+    <h2 className="text-lg font-semibold mb-2 text-gray-800">
+      Complete Your Payment (${chargeAmount})
+    </h2>
+    {/* Adding key={clientSecret} forces a clean Stripe instance reload */}
+    <Elements key={clientSecret} stripe={stripePromise} options={{ clientSecret }}>
+      <CheckoutForm onSuccess={handleUserBPaymentSuccess} buttonText={`Pay $${chargeAmount} & Finalize Order`} />
+    </Elements>
+  </div>
+)}

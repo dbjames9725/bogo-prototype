@@ -23,29 +23,22 @@ export async function POST(req: Request) {
     const stripeFee = 1.82;
     const totalUserChargeCents = Math.round((splitPrice + platformFee + stripeFee) * 100);
 
-    let paymentIntentId = lobby.partner_payment_intent_id;
-    let paymentIntent;
+    // 2. ALWAYS create a brand new Payment Intent for User B to prevent state contamination
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: totalUserChargeCents,
+      currency: 'usd',
+      capture_method: 'manual',
+    });
 
-    // 2. If User B already has a payment intent, fetch it. Otherwise create a new one.
-    if (paymentIntentId) {
-      paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
-    } else {
-      paymentIntent = await stripe.paymentIntents.create({
-        amount: totalUserChargeCents,
-        currency: 'usd',
-        capture_method: 'manual',
-      });
+    // 3. Save the new Payment Intent ID to Supabase
+    const { error: updateError } = await supabase
+      .from('lobbies')
+      .update({ partner_payment_intent_id: paymentIntent.id })
+      .eq('id', lobbyId);
 
-      // Save User B's Payment Intent ID into Supabase
-      const { error: updateError } = await supabase
-        .from('lobbies')
-        .update({ partner_payment_intent_id: paymentIntent.id })
-        .eq('id', lobbyId);
-
-      if (updateError) {
-        console.error('Supabase Update Error:', updateError);
-        return NextResponse.json({ error: updateError.message }, { status: 500 });
-      }
+    if (updateError) {
+      console.error('Supabase Update Error:', updateError);
+      return NextResponse.json({ error: updateError.message }, { status: 500 });
     }
 
     return NextResponse.json({
@@ -56,4 +49,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+
+
 
