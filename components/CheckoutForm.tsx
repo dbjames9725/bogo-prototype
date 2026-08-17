@@ -19,7 +19,7 @@ export default function CheckoutForm({ onSuccess, buttonText }: CheckoutFormProp
     e.preventDefault();
 
     if (!stripe || !elements) {
-      setErrorMessage("Stripe hasn't loaded yet. Please wait a second and try again.");
+      setErrorMessage("Payment system is initializing. Please try again in a moment.");
       return;
     }
 
@@ -27,33 +27,43 @@ export default function CheckoutForm({ onSuccess, buttonText }: CheckoutFormProp
     setErrorMessage(null);
 
     try {
-      console.log('Confirming Stripe payment...');
+      // 1. Get origin-only URL without dirty query params
+      const cleanReturnUrl = typeof window !== 'undefined'
+        ? window.location.origin + window.location.pathname
+        : '';
+
+      // 2. Confirm Payment Authorization with Stripe
       const { error, paymentIntent } = await stripe.confirmPayment({
         elements,
         confirmParams: {
-          return_url: window.location.href,
+          return_url: cleanReturnUrl,
         },
         redirect: 'if_required',
       });
 
       if (error) {
-        console.error('Stripe confirm error:', error);
-        setErrorMessage(error.message || 'Payment authorization failed.');
+        // If Stripe says it's already authorized/succeeded, treat as success!
+        if (error.code === 'payment_intent_unexpected_state') {
+          await onSuccess();
+          return;
+        }
+        setErrorMessage(error.message || 'Payment processing failed.');
         setLoading(false);
         return;
       }
 
-      console.log('PaymentIntent status:', paymentIntent?.status);
-
-      if (paymentIntent && (paymentIntent.status === 'requires_capture' || paymentIntent.status === 'succeeded')) {
-        console.log('Payment hold successful! Executing confirm-match...');
+      // 3. Verify Payment Hold Success & Capture
+      if (
+        paymentIntent &&
+        (paymentIntent.status === 'requires_capture' || paymentIntent.status === 'succeeded')
+      ) {
         await onSuccess();
       } else {
-        setErrorMessage(`Unexpected payment status: ${paymentIntent?.status}`);
+        setErrorMessage(`Payment status: ${paymentIntent?.status}. Please try again.`);
       }
     } catch (err: any) {
       console.error('Checkout error:', err);
-      setErrorMessage(err.message || 'An unexpected error occurred during checkout.');
+      setErrorMessage(err.message || 'An unexpected error occurred.');
     } finally {
       setLoading(false);
     }
@@ -74,7 +84,7 @@ export default function CheckoutForm({ onSuccess, buttonText }: CheckoutFormProp
         disabled={!stripe || loading}
         className="w-full bg-emerald-600 text-white font-semibold py-3 px-4 rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition cursor-pointer"
       >
-        {loading ? 'Processing Hold...' : buttonText || 'Pay & Authorize'}
+        {loading ? 'Authorizing Hold...' : buttonText || 'Pay & Authorize'}
       </button>
     </form>
   );
