@@ -57,23 +57,27 @@ export default function LobbyPage({ params }: { params: Promise<{ id: string }> 
   };
 
   const handleUserBPaymentSuccess = async () => {
-    const res = await fetch('/api/confirm-match', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lobbyId: id }),
-    });
-    const data = await res.json();
-    if (data.success) {
+    try {
+      const res = await fetch('/api/confirm-match', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lobbyId: id }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to capture lobby payments');
+      }
+
       setIsCompleted(true);
-    } else {
-      alert(`Confirmation Error: ${data.error || 'Unknown error'}`);
+    } catch (err: any) {
+      alert(`Confirmation Error: ${err.message}`);
     }
   };
 
   if (loading) return <div className="p-10 text-center font-sans">Loading Lobby...</div>;
   if (!lobby || lobby.error) return <div className="p-10 text-center font-sans text-red-500">Lobby not found or expired!</div>;
 
-  // Dynamically calculate fees display
   const totalItemPrice = Number(lobby.itemPrice || 0);
   const partnerSplit = totalItemPrice / 2;
   const partnerChargeDisplay = chargeAmount || ((partnerSplit + (totalItemPrice * 0.05 / 2) + 1.82)).toFixed(2);
@@ -103,7 +107,7 @@ export default function LobbyPage({ params }: { params: Promise<{ id: string }> 
           {!clientSecret ? (
             <div className="border p-5 rounded-xl bg-blue-50 border-blue-200">
               <p className="text-sm text-blue-900 mb-4 font-medium">
-                User A is waiting for a BOGO partner! Pay <strong>${partnerChargeDisplay}</strong> (50% split + processing fees) to claim your half.
+                User A is waiting for a BOGO partner! Pay <strong>${partnerChargeDisplay}</strong> (50% split + fees) to claim your half.
               </p>
               <button
                 onClick={joinLobby}
@@ -126,3 +130,4 @@ export default function LobbyPage({ params }: { params: Promise<{ id: string }> 
     </main>
   );
 }
+
