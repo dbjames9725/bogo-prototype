@@ -10,6 +10,16 @@ const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY 
 export default function HomePage() {
   const [itemPrice, setItemPrice] = useState<number>(100);
   const [itemName, setItemName] = useState<string>('BOGO Offer Item');
+ 
+  // Host Return Address State
+  const [address, setAddress] = useState({
+    name: '',
+    street1: '',
+    city: '',
+    state: '',
+    zip: '',
+  });
+
   const [loading, setLoading] = useState(false);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [chargeAmount, setChargeAmount] = useState<string | null>(null);
@@ -17,10 +27,13 @@ export default function HomePage() {
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Step 1: Create the PaymentIntent for Host
   async function handleCreateLobbyIntent() {
     if (!itemPrice || itemPrice <= 0) {
       setError('Please enter a valid item price.');
+      return;
+    }
+    if (!address.street1 || !address.city || !address.state || !address.zip) {
+      setError('Please complete your return shipping address.');
       return;
     }
 
@@ -33,7 +46,8 @@ export default function HomePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           itemPrice: Number(itemPrice),
-          itemName: itemName || 'BOGO Offer Item'
+          itemName: itemName || 'BOGO Offer Item',
+          userAAddress: address, // Pass Host address to backend
         }),
       });
 
@@ -53,7 +67,6 @@ export default function HomePage() {
     }
   }
 
-  // Step 2: Fired after Host successfully authorizes their card hold
   const handleHostPaymentSuccess = async () => {
     setIsAuthorized(true);
   };
@@ -109,6 +122,43 @@ export default function HomePage() {
                 ${price}
               </button>
             ))}
+          </div>
+
+          {/* Host Return Address Section */}
+          <div className="pt-4 border-t border-gray-200 space-y-3">
+            <h3 className="font-semibold text-gray-800 text-sm">Your Return Shipping Address (Where you are shipping from):</h3>
+            <input
+              type="text"
+              placeholder="Full Name"
+              className="w-full p-2.5 border rounded-lg text-sm border-gray-300"
+              onChange={(e) => setAddress({ ...address, name: e.target.value })}
+            />
+            <input
+              type="text"
+              placeholder="Street Address"
+              className="w-full p-2.5 border rounded-lg text-sm border-gray-300"
+              onChange={(e) => setAddress({ ...address, street1: e.target.value })}
+            />
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="City"
+                className="w-1/2 p-2.5 border rounded-lg text-sm border-gray-300"
+                onChange={(e) => setAddress({ ...address, city: e.target.value })}
+              />
+              <input
+                type="text"
+                placeholder="State (e.g. CA)"
+                className="w-1/4 p-2.5 border rounded-lg text-sm border-gray-300"
+                onChange={(e) => setAddress({ ...address, state: e.target.value })}
+              />
+              <input
+                type="text"
+                placeholder="ZIP Code"
+                className="w-1/4 p-2.5 border rounded-lg text-sm border-gray-300"
+                onChange={(e) => setAddress({ ...address, zip: e.target.value })}
+              />
+            </div>
           </div>
 
           <button

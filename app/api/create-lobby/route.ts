@@ -4,16 +4,16 @@ import { supabase } from '@/lib/supabase';
 
 export async function POST(req: Request) {
   try {
-    const { itemPrice, itemName = 'BOGO Offer Item' } = await req.json();
+    const { itemPrice, itemName = 'BOGO Offer Item', userAAddress } = await req.json();
 
     const numericPrice = Number(itemPrice);
     if (!numericPrice || numericPrice <= 0) {
       return NextResponse.json({ error: 'Invalid item price' }, { status: 400 });
     }
 
-    const splitPrice = numericPrice / 2;         // 50% split share
-    const platformFee = (numericPrice * 0.05) / 2; // 5% platform fee split
-    const stripeFee = 1.82;                       // Card processing fee estimate
+    const splitPrice = numericPrice / 2;
+    const platformFee = (numericPrice * 0.05) / 2;
+    const stripeFee = 1.82;
     const totalUserChargeCents = Math.round((splitPrice + platformFee + stripeFee) * 100);
 
     const paymentIntent = await stripe.paymentIntents.create({
@@ -27,7 +27,7 @@ export async function POST(req: Request) {
     const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
     const expiresAt = now + TWENTY_FOUR_HOURS;
 
-    // Insert dynamic lobby record into Supabase
+    // Insert lobby record including Host Return Address
     const { error } = await supabase
       .from('lobbies')
       .insert({
@@ -37,6 +37,7 @@ export async function POST(req: Request) {
         host_share: splitPrice,
         partner_share: splitPrice,
         host_payment_intent_id: paymentIntent.id,
+        user_a_address: userAAddress || null,
         status: 'WAITING_FOR_PARTNER',
         created_at: new Date(now).toISOString(),
         expires_at: new Date(expiresAt).toISOString(),
