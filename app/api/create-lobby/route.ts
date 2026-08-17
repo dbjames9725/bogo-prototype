@@ -4,11 +4,16 @@ import { supabase } from '@/lib/supabase';
 
 export async function POST(req: Request) {
   try {
-    const { itemPrice = 100 } = await req.json();
+    const { itemPrice, itemName = 'BOGO Offer Item' } = await req.json();
 
-    const splitPrice = itemPrice / 2;           // $50.00
-    const platformFee = (itemPrice * 0.05) / 2; // $2.50
-    const stripeFee = 1.82;                     // $1.82 estimated card fee
+    const numericPrice = Number(itemPrice);
+    if (!numericPrice || numericPrice <= 0) {
+      return NextResponse.json({ error: 'Invalid item price' }, { status: 400 });
+    }
+
+    const splitPrice = numericPrice / 2;         // 50% split share
+    const platformFee = (numericPrice * 0.05) / 2; // 5% platform fee split
+    const stripeFee = 1.82;                       // Card processing fee estimate
     const totalUserChargeCents = Math.round((splitPrice + platformFee + stripeFee) * 100);
 
     const paymentIntent = await stripe.paymentIntents.create({
@@ -22,13 +27,13 @@ export async function POST(req: Request) {
     const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
     const expiresAt = now + TWENTY_FOUR_HOURS;
 
-    // Insert new lobby directly into Supabase
+    // Insert dynamic lobby record into Supabase
     const { error } = await supabase
       .from('lobbies')
       .insert({
         id: lobbyId,
-        item_name: 'BOGO Offer Item',
-        total_price: itemPrice,
+        item_name: itemName,
+        total_price: numericPrice,
         host_share: splitPrice,
         partner_share: splitPrice,
         host_payment_intent_id: paymentIntent.id,
@@ -44,6 +49,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       lobbyId,
+      itemName,
+      itemPrice: numericPrice.toFixed(2),
       clientSecret: paymentIntent.client_secret,
       chargeAmount: (totalUserChargeCents / 100).toFixed(2),
       expiresAt,
