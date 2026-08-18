@@ -21,13 +21,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Lobby not found' }, { status: 404 });
     }
 
-    const itemPrice = Number(lobby.total_price);
-    const splitPrice = itemPrice / 2;
-    const platformFee = (itemPrice * 0.05) / 2;
+    // total_price is already calculated in create-lobby based on deal_type
+    // (1.0x price for BOGO Free, 1.5x price for BOGO 50%)
+    const totalCartPrice = Number(lobby.total_price);
+    const splitPrice = totalCartPrice / 2;
+    const platformFee = (totalCartPrice * 0.05) / 2;
     const stripeFee = 1.82;
     const totalUserChargeCents = Math.round((splitPrice + platformFee + stripeFee) * 100);
 
-    // 2. Create a fresh Payment Intent for User B
+    // 2. Create Payment Intent for User B matching exact half
     const paymentIntent = await stripe.paymentIntents.create({
       amount: totalUserChargeCents,
       currency: 'usd',
