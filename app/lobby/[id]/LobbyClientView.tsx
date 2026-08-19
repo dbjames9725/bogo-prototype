@@ -82,8 +82,11 @@ function CheckoutForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 bg-gray-50 p-5 rounded-2xl border border-gray-200">
+      <div className="bg-blue-100 text-blue-900 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider">
+        Step 1: Enter Payment Info & Shipping Address ({role})
+      </div>
       <h3 className="font-bold text-gray-900 text-base">
-        {role === 'HOST' ? '1. Authorize Your Host Payment Hold' : 'Authorize Your Split Share Payment'}
+        {role === 'HOST' ? 'Authorize Your Host Payment Hold' : 'Authorize Your Split Share Payment'}
       </h3>
       <p className="text-xs text-gray-500">
         Funds are authorized on hold and only captured when both parties complete checkout.
@@ -168,6 +171,7 @@ export default function LobbyClientView({
   const [lobby, setLobby] = useState<any>(initialLobby);
   const [copied, setCopied] = useState(false);
   const [clientSecret, setClientSecret] = useState('');
+  const [loadingSecret, setLoadingSecret] = useState(true);
 
   const shareableUrl = typeof window !== 'undefined' ? `${window.location.origin}/lobby/${lobbyId}` : '';
 
@@ -196,7 +200,11 @@ export default function LobbyClientView({
           }
         } catch (err) {
           console.error('Payment intent initialization failed:', err);
+        } finally {
+          setLoadingSecret(false);
         }
+      } else {
+        setLoadingSecret(false);
       }
     }
 
@@ -217,7 +225,7 @@ export default function LobbyClientView({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [lobbyId, lobby]);
+  }, [lobbyId, lobby?.id]);
 
   const copyToClipboard = () => {
     if (shareableUrl) {
@@ -285,8 +293,16 @@ export default function LobbyClientView({
         </div>
       </div>
 
+      {/* Payment Intent Initializing Spinner */}
+      {loadingSecret && lobby.status !== 'MATCHED' && (
+        <div className="p-8 text-center bg-gray-50 rounded-2xl border border-gray-200 space-y-2">
+          <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+          <p className="text-sm font-semibold text-gray-700">Setting up secure Stripe checkout...</p>
+        </div>
+      )}
+
       {/* Stripe Payment Form */}
-      {lobby.status !== 'MATCHED' && clientSecret && (isHostPendingHold || isPartnerPendingHold) && (
+      {!loadingSecret && lobby.status !== 'MATCHED' && clientSecret && (isHostPendingHold || isPartnerPendingHold) && (
         <Elements stripe={stripePromise} options={{ clientSecret }}>
           <CheckoutForm
             lobbyId={lobbyId}
@@ -298,8 +314,8 @@ export default function LobbyClientView({
         </Elements>
       )}
 
-      {/* Invite Box */}
-      {lobby.status !== 'MATCHED' && lobby.host_payment_intent_id && !lobby.partner_payment_intent_id && (
+      {/* Invite Box (Shows ONLY after Host has completed payment authorization) */}
+      {!loadingSecret && lobby.status !== 'MATCHED' && lobby.host_payment_intent_id && !lobby.partner_payment_intent_id && (
         <div className="bg-blue-50/70 border border-blue-200 rounded-2xl p-5 space-y-4">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-blue-600 text-white rounded-xl">
@@ -314,7 +330,7 @@ export default function LobbyClientView({
             </div>
             <div>
               <h3 className="font-bold text-blue-950 text-base">Share Partner Invite Link</h3>
-              <p className="text-xs text-blue-700">Send this link to a partner so they can authorize payment.</p>
+              <p className="text-xs text-blue-700">Host payment authorized! Send this link to your partner.</p>
             </div>
           </div>
 
