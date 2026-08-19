@@ -10,18 +10,22 @@ export async function POST(req: Request) {
     }
 
     const priceNum = parseFloat(itemPrice);
+    const hostShareNum = parseFloat(userAShare);
+    const partnerShareNum = parseFloat(userBShare);
 
-    // Insert new lobby populating both item_price and total_price to satisfy legacy schemas
+    // Insert populating both new and legacy column names
     const { data: lobby, error } = await supabase
       .from('lobbies')
       .insert([
         {
           item_name: itemName,
           item_price: priceNum,
-          total_price: priceNum, // Keeps legacy column satisfied
+          total_price: priceNum,
           deal_type: dealType || 'BOGO_FREE',
-          user_a_share: parseFloat(userAShare),
-          user_b_share: parseFloat(userBShare),
+          user_a_share: hostShareNum,
+          user_b_share: partnerShareNum,
+          host_share: hostShareNum,       // Satisfies legacy schema
+          partner_share: partnerShareNum, // Satisfies legacy schema
           status: 'PENDING',
           host_payment_intent_id: null,
           partner_payment_intent_id: null,
