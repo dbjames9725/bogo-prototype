@@ -6,13 +6,20 @@ import { calculateLocalTax, STATE_TAX_RATES } from '@/lib/tax';
 
 export default function HomePage() {
   const router = useRouter();
+ 
+  // Calculator state
+  const [calcPrice, setCalcPrice] = useState<number>(120);
+  const [calcDeal, setCalcDeal] = useState<'BOGO_FREE' | 'BOGO_50'>('BOGO_FREE');
+ 
+  // Form state
   const [dealType, setDealType] = useState<'BOGO_FREE' | 'BOGO_50'>('BOGO_FREE');
   const [itemName, setItemName] = useState('');
-  const [itemPrice, setItemPrice] = useState<string>('');
+  const [itemPrice, setItemPrice] = useState<string>('120');
   const [stateCode, setStateCode] = useState('CA');
   const [includeTax, setIncludeTax] = useState(true);
   const [loading, setLoading] = useState(false);
 
+  // Math derivations
   const rawPrice = parseFloat(itemPrice) || 0;
   const taxInfo = calculateLocalTax(rawPrice, stateCode);
   const finalPrice = includeTax ? taxInfo.totalWithTax : rawPrice;
@@ -20,6 +27,15 @@ export default function HomePage() {
   // Split Logic Calculations
   const hostShare = dealType === 'BOGO_FREE' ? finalPrice / 2 : (finalPrice * 1.5) / 2;
   const partnerShare = hostShare;
+
+  // Calculator savings calculations
+  const calcTaxInfo = calculateLocalTax(calcPrice, stateCode);
+  const calcTotalWithTax = calcTaxInfo.totalWithTax;
+  const calcFullRetailTwoItems = calcTotalWithTax * 2;
+  const calcBogoTotal = calcDeal === 'BOGO_FREE' ? calcTotalWithTax : calcTotalWithTax * 1.5;
+  const calcSplitPerPerson = calcBogoTotal / 2;
+  const calcSavings = calcFullRetailTwoItems - calcBogoTotal;
+  const calcSavingsPercent = calcDeal === 'BOGO_FREE' ? 50 : 25;
 
   async function handleCreateLobby(e: React.FormEvent) {
     e.preventDefault();
@@ -54,19 +70,132 @@ export default function HomePage() {
     }
   }
 
+  function applyCalculatorToForm() {
+    setItemPrice(calcPrice.toString());
+    setDealType(calcDeal);
+    const formElement = document.getElementById('lobby-form');
+    if (formElement) {
+      formElement.scrollIntoView({ behavior: 'smooth' });
+    }
+  }
+
   return (
-    <div className="w-full max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
+    <div className="w-full max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8 space-y-8">
       {/* Hero Section */}
-      <div className="text-center mb-6 sm:mb-10">
+      <div className="text-center">
+        <span className="inline-block bg-blue-100 text-blue-800 text-xs font-extrabold px-3 py-1 rounded-full uppercase tracking-wider mb-3">
+          🔥 Smart Deal Splitter
+        </span>
         <h1 className="text-3xl sm:text-5xl font-extrabold text-gray-900 tracking-tight">
-          Split Deals. Save Money.
+          Split Deals. Double Your Savings.
         </h1>
         <p className="mt-2 text-base sm:text-lg text-gray-600 max-w-2xl mx-auto">
-          Pair up with buyers online to split Buy 1 Get 1 Free or 50% Off promotions easily.
+          Never pay full price again. Pair up with verified buyers to split BOGO promotions anywhere online.
         </p>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm sm:shadow-md border border-gray-200 p-4 sm:p-8">
+      {/* Gamified Interactive Savings Calculator Widget */}
+      <div className="bg-gradient-to-br from-gray-900 via-blue-950 to-indigo-900 text-white rounded-2xl p-6 sm:p-8 shadow-xl border border-blue-800/40 relative overflow-hidden">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-6">
+          <div>
+            <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white flex items-center gap-2">
+              ⚡ Live Savings Simulator
+            </h2>
+            <p className="text-xs sm:text-sm text-blue-200">
+              Drag the sliders to see how much cash BOGO Split puts back in your pocket!
+            </p>
+          </div>
+          <div className="bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 font-bold px-3 py-1 rounded-full text-xs flex items-center gap-1">
+            <span className="animate-pulse">●</span> {calcSavingsPercent}% OFF INSTANTLY
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Controls */}
+          <div className="space-y-4 bg-white/5 p-4 rounded-xl border border-white/10">
+            <div>
+              <div className="flex justify-between text-sm font-semibold mb-1">
+                <span>Single Item Retail Price</span>
+                <span className="text-emerald-400 font-bold">${calcPrice}</span>
+              </div>
+              <input
+                type="range"
+                min="10"
+                max="500"
+                step="5"
+                value={calcPrice}
+                onChange={(e) => setCalcPrice(Number(e.target.value))}
+                className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-300 mb-1">Promotion Type</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCalcDeal('BOGO_FREE')}
+                  className={`py-2 px-3 rounded-lg text-xs font-bold transition border ${
+                    calcDeal === 'BOGO_FREE'
+                      ? 'bg-blue-600 border-blue-400 text-white shadow-lg'
+                      : 'bg-gray-800/80 border-gray-700 text-gray-300 hover:bg-gray-700'
+                  }`}
+                >
+                  Buy 1 Get 1 FREE
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCalcDeal('BOGO_50')}
+                  className={`py-2 px-3 rounded-lg text-xs font-bold transition border ${
+                    calcDeal === 'BOGO_50'
+                      ? 'bg-blue-600 border-blue-400 text-white shadow-lg'
+                      : 'bg-gray-800/80 border-gray-700 text-gray-300 hover:bg-gray-700'
+                  }`}
+                >
+                  Buy 1 Get 1 50% OFF
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Dynamic Savings Card */}
+          <div className="bg-white/10 backdrop-blur-md rounded-xl p-5 border border-white/20 flex flex-col justify-between">
+            <div className="space-y-3">
+              <div className="flex justify-between items-baseline">
+                <span className="text-xs uppercase tracking-wider text-gray-300 font-semibold">
+                  Full Retail (2 Items)
+                </span>
+                <span className="text-sm line-through text-gray-400">${calcFullRetailTwoItems.toFixed(2)}</span>
+              </div>
+
+              <div className="flex justify-between items-baseline">
+                <span className="text-xs uppercase tracking-wider text-emerald-300 font-bold">
+                  Your Split Share
+                </span>
+                <span className="text-2xl font-black text-emerald-400">${calcSplitPerPerson.toFixed(2)}</span>
+              </div>
+
+              <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 text-center">
+                <span className="text-xs text-emerald-200 block">Total Group Savings</span>
+                <span className="text-xl font-extrabold text-emerald-300">${calcSavings.toFixed(2)}</span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={applyCalculatorToForm}
+              className="mt-4 w-full bg-emerald-500 hover:bg-emerald-400 text-gray-950 font-black py-2.5 px-4 rounded-xl transition shadow-lg text-sm flex items-center justify-center gap-1"
+            >
+              🚀 Create Lobby with ${calcPrice} Deal ➔
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Creation Form */}
+      <div id="lobby-form" className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-8">
+        <h2 className="text-2xl font-bold text-gray-900 mb-6">Create Your BOGO Split Lobby</h2>
+
         <form onSubmit={handleCreateLobby} className="space-y-6">
           {/* Deal Selector */}
           <div>
@@ -126,7 +255,7 @@ export default function HomePage() {
                 type="number"
                 step="0.01"
                 required
-                placeholder="100.00"
+                placeholder="120.00"
                 value={itemPrice}
                 onChange={(e) => setItemPrice(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
@@ -143,7 +272,6 @@ export default function HomePage() {
               </div>
 
               <div className="flex items-center gap-3">
-                {/* 50 States + DC Dynamic Dropdown */}
                 <select
                   value={stateCode}
                   onChange={(e) => setStateCode(e.target.value)}
