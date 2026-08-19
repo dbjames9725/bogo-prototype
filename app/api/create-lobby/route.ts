@@ -9,13 +9,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing required lobby fields' }, { status: 400 });
     }
 
-    // Insert new lobby explicitly in PENDING status with null payment intents
+    const priceNum = parseFloat(itemPrice);
+
+    // Insert new lobby populating both item_price and total_price to satisfy legacy schemas
     const { data: lobby, error } = await supabase
       .from('lobbies')
       .insert([
         {
           item_name: itemName,
-          item_price: parseFloat(itemPrice),
+          item_price: priceNum,
+          total_price: priceNum, // Keeps legacy column satisfied
           deal_type: dealType || 'BOGO_FREE',
           user_a_share: parseFloat(userAShare),
           user_b_share: parseFloat(userBShare),
