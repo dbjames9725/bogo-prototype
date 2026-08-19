@@ -3,6 +3,7 @@ import { stripe } from '@/lib/stripe';
 import { supabase } from '@/lib/supabase';
 import EasyPostClient from '@easypost/api';
 import { sendMatchCompletionEmails } from '@/lib/email';
+import { sendHostMatchSms } from '@/lib/sms';
 
 export async function POST(req: Request) {
   try {
@@ -110,9 +111,23 @@ export async function POST(req: Request) {
       console.error('Email Notification Error:', emailErr.message);
     }
 
+    // 6. Trigger Twilio SMS alert to Host (User A)
+    const hostPhone = lobby.user_a_address?.phone;
+    if (hostPhone) {
+      try {
+        await sendHostMatchSms({
+          toPhone: hostPhone,
+          itemName: lobby.item_name,
+          trackingCode: trackingCode || undefined,
+        });
+      } catch (smsErr: any) {
+        console.error('SMS Alert Error:', smsErr.message);
+      }
+    }
+
     return NextResponse.json({
       success: true,
-      message: 'Match confirmed, payments captured, and shipping label generated!',
+      message: 'Match confirmed, payments captured, label generated, and notifications dispatched!',
       shippingLabelUrl,
       trackingCode,
     });
