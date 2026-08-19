@@ -6,12 +6,12 @@ import { calculateLocalTax, STATE_TAX_RATES } from '@/lib/tax';
 
 export default function HomePage() {
   const router = useRouter();
- 
-  // Calculator state
+
+  // Calculator State
   const [calcPrice, setCalcPrice] = useState<number>(120);
   const [calcDeal, setCalcDeal] = useState<'BOGO_FREE' | 'BOGO_50'>('BOGO_FREE');
- 
-  // Form state
+
+  // Form State
   const [dealType, setDealType] = useState<'BOGO_FREE' | 'BOGO_50'>('BOGO_FREE');
   const [itemName, setItemName] = useState('');
   const [itemPrice, setItemPrice] = useState<string>('120');
@@ -19,16 +19,16 @@ export default function HomePage() {
   const [includeTax, setIncludeTax] = useState(true);
   const [loading, setLoading] = useState(false);
 
-  // Math derivations
+  // Form Math Derivations
   const rawPrice = parseFloat(itemPrice) || 0;
   const taxInfo = calculateLocalTax(rawPrice, stateCode);
   const finalPrice = includeTax ? taxInfo.totalWithTax : rawPrice;
 
-  // Split Logic Calculations
+  // Split Logic
   const hostShare = dealType === 'BOGO_FREE' ? finalPrice / 2 : (finalPrice * 1.5) / 2;
   const partnerShare = hostShare;
 
-  // Calculator savings calculations
+  // Calculator Math Derivations
   const calcTaxInfo = calculateLocalTax(calcPrice, stateCode);
   const calcTotalWithTax = calcTaxInfo.totalWithTax;
   const calcFullRetailTwoItems = calcTotalWithTax * 2;
@@ -80,43 +80,48 @@ export default function HomePage() {
   }
 
   return (
-    <div className="w-full max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8 space-y-8">
+    <div className="w-full max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8 space-y-10">
       {/* Hero Section */}
-      <div className="text-center">
-        <span className="inline-block bg-blue-100 text-blue-800 text-xs font-extrabold px-3 py-1 rounded-full uppercase tracking-wider mb-3">
-          🔥 Smart Deal Splitter
-        </span>
-        <h1 className="text-3xl sm:text-5xl font-extrabold text-gray-900 tracking-tight">
-          Split Deals. Double Your Savings.
+      <div className="text-center space-y-3">
+        <div className="inline-flex items-center gap-2 bg-blue-50 border border-blue-200 text-blue-700 text-xs font-semibold px-3 py-1 rounded-full">
+          <span>✨</span>
+          <span>Zero Markups. Split Any Online Promo.</span>
+        </div>
+        <h1 className="text-4xl sm:text-6xl font-black text-gray-900 tracking-tight">
+          Split Deals. Pay Half.
         </h1>
-        <p className="mt-2 text-base sm:text-lg text-gray-600 max-w-2xl mx-auto">
-          Never pay full price again. Pair up with verified buyers to split BOGO promotions anywhere online.
+        <p className="text-base sm:text-lg text-gray-600 max-w-xl mx-auto leading-relaxed">
+          Pair with verified buyers online to instantly split Buy 1 Get 1 Free & 50% Off promotions.
         </p>
       </div>
 
-      {/* Gamified Interactive Savings Calculator Widget */}
-      <div className="bg-gradient-to-br from-gray-900 via-blue-950 to-indigo-900 text-white rounded-2xl p-6 sm:p-8 shadow-xl border border-blue-800/40 relative overflow-hidden">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-6">
+      {/* Sleek FinTech Calculator Widget */}
+      <div className="bg-slate-900 text-white rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-800 relative overflow-hidden">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
           <div>
-            <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white flex items-center gap-2">
-              ⚡ Live Savings Simulator
+            <h2 className="text-lg sm:text-xl font-bold tracking-tight text-white flex items-center gap-2">
+              <span>🧮</span> Interactive Savings Simulator
             </h2>
-            <p className="text-xs sm:text-sm text-blue-200">
-              Drag the sliders to see how much cash BOGO Split puts back in your pocket!
+            <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
+              Adjust retail price & deal type to project your personal savings.
             </p>
           </div>
-          <div className="bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 font-bold px-3 py-1 rounded-full text-xs flex items-center gap-1">
-            <span className="animate-pulse">●</span> {calcSavingsPercent}% OFF INSTANTLY
+          <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-semibold px-3 py-1 rounded-full text-xs flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            Save {calcSavingsPercent}% Per Item
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Controls */}
-          <div className="space-y-4 bg-white/5 p-4 rounded-xl border border-white/10">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          {/* Controls Column */}
+          <div className="lg:col-span-7 space-y-6">
+            {/* Price Slider */}
             <div>
-              <div className="flex justify-between text-sm font-semibold mb-1">
-                <span>Single Item Retail Price</span>
-                <span className="text-emerald-400 font-bold">${calcPrice}</span>
+              <div className="flex justify-between items-baseline mb-2">
+                <span className="text-xs font-medium uppercase tracking-wider text-slate-400">
+                  Item Retail Price
+                </span>
+                <span className="text-2xl font-black text-white">${calcPrice}</span>
               </div>
               <input
                 type="range"
@@ -125,20 +130,28 @@ export default function HomePage() {
                 step="5"
                 value={calcPrice}
                 onChange={(e) => setCalcPrice(Number(e.target.value))}
-                className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
               />
+              <div className="flex justify-between text-[10px] text-slate-500 mt-1 font-mono">
+                <span>$10</span>
+                <span>$250</span>
+                <span>$500</span>
+              </div>
             </div>
 
+            {/* Deal Segmented Control */}
             <div>
-              <label className="block text-xs font-semibold text-gray-300 mb-1">Promotion Type</label>
-              <div className="grid grid-cols-2 gap-2">
+              <span className="block text-xs font-medium uppercase tracking-wider text-slate-400 mb-2">
+                Select Deal Mechanics
+              </span>
+              <div className="grid grid-cols-2 gap-2 bg-slate-800/80 p-1 rounded-xl border border-slate-700/60">
                 <button
                   type="button"
                   onClick={() => setCalcDeal('BOGO_FREE')}
-                  className={`py-2 px-3 rounded-lg text-xs font-bold transition border ${
+                  className={`py-2.5 px-3 rounded-lg text-xs font-semibold transition ${
                     calcDeal === 'BOGO_FREE'
-                      ? 'bg-blue-600 border-blue-400 text-white shadow-lg'
-                      : 'bg-gray-800/80 border-gray-700 text-gray-300 hover:bg-gray-700'
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-white'
                   }`}
                 >
                   Buy 1 Get 1 FREE
@@ -146,10 +159,10 @@ export default function HomePage() {
                 <button
                   type="button"
                   onClick={() => setCalcDeal('BOGO_50')}
-                  className={`py-2 px-3 rounded-lg text-xs font-bold transition border ${
+                  className={`py-2.5 px-3 rounded-lg text-xs font-semibold transition ${
                     calcDeal === 'BOGO_50'
-                      ? 'bg-blue-600 border-blue-400 text-white shadow-lg'
-                      : 'bg-gray-800/80 border-gray-700 text-gray-300 hover:bg-gray-700'
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-white'
                   }`}
                 >
                   Buy 1 Get 1 50% OFF
@@ -158,43 +171,50 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Dynamic Savings Card */}
-          <div className="bg-white/10 backdrop-blur-md rounded-xl p-5 border border-white/20 flex flex-col justify-between">
-            <div className="space-y-3">
-              <div className="flex justify-between items-baseline">
-                <span className="text-xs uppercase tracking-wider text-gray-300 font-semibold">
-                  Full Retail (2 Items)
-                </span>
-                <span className="text-sm line-through text-gray-400">${calcFullRetailTwoItems.toFixed(2)}</span>
+          {/* Breakdown Card Column */}
+          <div className="lg:col-span-5 bg-slate-800/50 rounded-2xl p-6 border border-slate-700/50 space-y-5">
+            <div className="space-y-3 text-sm">
+              <div className="flex justify-between items-center text-slate-400">
+                <span className="text-xs">Standard Retail Cost (2 Items)</span>
+                <span className="line-through font-mono">${calcFullRetailTwoItems.toFixed(2)}</span>
               </div>
 
-              <div className="flex justify-between items-baseline">
-                <span className="text-xs uppercase tracking-wider text-emerald-300 font-bold">
-                  Your Split Share
-                </span>
-                <span className="text-2xl font-black text-emerald-400">${calcSplitPerPerson.toFixed(2)}</span>
+              <div className="flex justify-between items-center text-slate-300">
+                <span className="text-xs font-medium">BOGO Promo Total (with Tax)</span>
+                <span className="font-semibold font-mono text-white">${calcBogoTotal.toFixed(2)}</span>
               </div>
 
-              <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 text-center">
-                <span className="text-xs text-emerald-200 block">Total Group Savings</span>
-                <span className="text-xl font-extrabold text-emerald-300">${calcSavings.toFixed(2)}</span>
+              <div className="pt-3 border-t border-slate-700 flex justify-between items-baseline">
+                <div>
+                  <span className="block text-xs font-bold text-emerald-400 uppercase tracking-wider">
+                    Your Split Share
+                  </span>
+                  <span className="text-[10px] text-slate-400">You pay only this amount</span>
+                </div>
+                <span className="text-3xl font-black text-emerald-400 font-mono">
+                  ${calcSplitPerPerson.toFixed(2)}
+                </span>
               </div>
             </div>
 
             <button
               type="button"
               onClick={applyCalculatorToForm}
-              className="mt-4 w-full bg-emerald-500 hover:bg-emerald-400 text-gray-950 font-black py-2.5 px-4 rounded-xl transition shadow-lg text-sm flex items-center justify-center gap-1"
+              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-4 rounded-xl transition shadow-lg text-sm flex items-center justify-center gap-2 group"
             >
-              🚀 Create Lobby with ${calcPrice} Deal ➔
+              <span>Lock In This Split</span>
+              <span className="group-hover:translate-x-1 transition-transform">➔</span>
             </button>
           </div>
         </div>
       </div>
 
       {/* Main Creation Form */}
-      <div id="lobby-form" className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-8">
-        <h2 className="text-2xl font-bold text-gray-900 mb-6">Create Your BOGO Split Lobby</h2>
+      <div id="lobby-form" className="bg-white rounded-3xl shadow-sm border border-gray-200 p-6 sm:p-10">
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold text-gray-900">Create Your BOGO Split Lobby</h2>
+          <p className="text-sm text-gray-500 mt-1">Set up your deal parameters and generate a shareable partner link.</p>
+        </div>
 
         <form onSubmit={handleCreateLobby} className="space-y-6">
           {/* Deal Selector */}
@@ -204,7 +224,7 @@ export default function HomePage() {
               <button
                 type="button"
                 onClick={() => setDealType('BOGO_FREE')}
-                className={`p-4 rounded-xl border-2 text-left transition flex flex-col justify-between ${
+                className={`p-4 rounded-2xl border-2 text-left transition flex flex-col justify-between ${
                   dealType === 'BOGO_FREE'
                     ? 'border-blue-600 bg-blue-50/50 text-blue-900'
                     : 'border-gray-200 hover:border-gray-300 text-gray-700'
@@ -219,7 +239,7 @@ export default function HomePage() {
               <button
                 type="button"
                 onClick={() => setDealType('BOGO_50')}
-                className={`p-4 rounded-xl border-2 text-left transition flex flex-col justify-between ${
+                className={`p-4 rounded-2xl border-2 text-left transition flex flex-col justify-between ${
                   dealType === 'BOGO_50'
                     ? 'border-blue-600 bg-blue-50/50 text-blue-900'
                     : 'border-gray-200 hover:border-gray-300 text-gray-700'
@@ -245,7 +265,7 @@ export default function HomePage() {
                 placeholder="e.g. Nike Air Max Sneakers"
                 value={itemName}
                 onChange={(e) => setItemName(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
               />
             </div>
 
@@ -258,13 +278,13 @@ export default function HomePage() {
                 placeholder="120.00"
                 value={itemPrice}
                 onChange={(e) => setItemPrice(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
               />
             </div>
           </div>
 
           {/* State & Tax Calculations */}
-          <div className="bg-gray-50 rounded-xl p-4 sm:p-5 border border-gray-200 space-y-4">
+          <div className="bg-gray-50 rounded-2xl p-4 sm:p-5 border border-gray-200 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <span className="font-semibold text-gray-900 text-sm">Estimated Local Sales Tax</span>
@@ -275,7 +295,7 @@ export default function HomePage() {
                 <select
                   value={stateCode}
                   onChange={(e) => setStateCode(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-[200px]"
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-[200px]"
                 >
                   {Object.entries(STATE_TAX_RATES).map(([code, data]) => (
                     <option key={code} value={code}>
@@ -313,7 +333,7 @@ export default function HomePage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 px-6 rounded-xl shadow transition text-base sm:text-lg flex justify-center items-center"
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-2xl shadow transition text-base sm:text-lg flex justify-center items-center"
           >
             {loading ? 'Creating Lobby...' : 'Start BOGO Split Lobby'}
           </button>
