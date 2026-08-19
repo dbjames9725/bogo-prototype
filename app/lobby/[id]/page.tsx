@@ -6,7 +6,7 @@ interface Props {
   params: Promise<{ id: string }>;
 }
 
-// 1. Server-Side Dynamic Open Graph Metadata
+// Dynamic Open Graph Metadata
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
 
@@ -37,27 +37,20 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       description,
       type: 'website',
       url: `https://bogo-prototype-wheat.vercel.app/lobby/${id}`,
-      images: [
-        {
-          url: `/api/og?title=${encodeURIComponent(lobby.item_name)}&price=${encodeURIComponent(priceFormatted)}`,
-          width: 1200,
-          height: 630,
-          alt: `BOGO Split offer for ${lobby.item_name}`,
-        },
-      ],
-    },
-    twitter: {
-      card: 'summary_large_image',
-      title,
-      description,
-      images: [`/api/og?title=${encodeURIComponent(lobby.item_name)}&price=${encodeURIComponent(priceFormatted)}`],
     },
   };
 }
 
-// 2. Main Page Component
+// Server Component: Fetch data on the server and pass to client
 export default async function LobbyPage({ params }: Props) {
   const { id } = await params;
-  return <LobbyClientView lobbyId={id} />;
-}
 
+  // Server-side database fetch (Bypasses browser client-side blocking)
+  const { data: initialLobby } = await supabase
+    .from('lobbies')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  return <LobbyClientView lobbyId={id} initialLobby={initialLobby} />;
+}

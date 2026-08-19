@@ -7,7 +7,6 @@ import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '');
 
-// Inner Checkout Form Component
 function CheckoutForm({
   lobbyId,
   role,
@@ -22,7 +21,6 @@ function CheckoutForm({
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Shipping Address Form Inputs
   const [name, setName] = useState('');
   const [street, setStreet] = useState('');
   const [city, setCity] = useState('');
@@ -37,7 +35,6 @@ function CheckoutForm({
     setLoading(true);
     setErrorMessage('');
 
-    // 1. Submit Payment Element
     const { error: submitError } = await elements.submit();
     if (submitError) {
       setErrorMessage(submitError.message || 'Payment submission failed.');
@@ -45,7 +42,6 @@ function CheckoutForm({
       return;
     }
 
-    // 2. Confirm Payment Intent (Hold Funds)
     const { error: confirmError, paymentIntent } = await stripe.confirmPayment({
       elements,
       confirmParams: {
@@ -61,7 +57,6 @@ function CheckoutForm({
     }
 
     if (paymentIntent && paymentIntent.status === 'requires_capture') {
-      // 3. Save Payment Intent ID & Address in Supabase
       const isHost = role === 'HOST';
       const addressData = { name, street1: street, city, state, zip, phone };
 
@@ -71,7 +66,6 @@ function CheckoutForm({
 
       await supabase.from('lobbies').update(updateData).eq('id', lobbyId);
 
-      // 4. If this is Partner (User B), trigger final match confirmation API
       if (!isHost) {
         await fetch('/api/confirm-match', {
           method: 'POST',
@@ -140,7 +134,7 @@ function CheckoutForm({
         </div>
         <input
           type="tel"
-          placeholder="Phone Number (for shipping/SMS alerts)"
+          placeholder="Phone Number (for shipping updates)"
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
           className="w-full px-3 py-2 border rounded-lg text-sm bg-white"
@@ -164,32 +158,29 @@ function CheckoutForm({
   );
 }
 
-// Main Client View Component
-export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
-  const [lobby, setLobby] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+export default function LobbyClientView({
+  lobbyId,
+  initialLobby,
+}: {
+  lobbyId: string;
+  initialLobby: any;
+}) {
+  const [lobby, setLobby] = useState<any>(initialLobby);
   const [copied, setCopied] = useState(false);
   const [clientSecret, setClientSecret] = useState('');
-  const [userRole, setUserRole] = useState<'HOST' | 'PARTNER'>('PARTNER');
 
   const shareableUrl = typeof window !== 'undefined' ? `${window.location.origin}/lobby/${lobbyId}` : '';
 
   useEffect(() => {
-    async function init() {
-      const { data, error } = await supabase.from('lobbies').select('*').eq('id', lobbyId).single();
+    async function setupPaymentIntent() {
+      if (!lobby) return;
 
-      if (!error && data) {
-        setLobby(data);
+      if (lobby.status !== 'MATCHED') {
+        const isHostPending = !lobby.host_payment_intent_id;
+        const role = isHostPending ? 'HOST' : 'PARTNER';
+        const shareAmount = role === 'HOST' ? lobby.user_a_share : lobby.user_b_share;
 
-        // Determine if current user is Host or Partner based on existing payment holds
-        const isHost = !data.host_payment_intent_id;
-        const role = isHost ? 'HOST' : 'PARTNER';
-        setUserRole(role);
-
-        // Request Stripe Payment Intent Client Secret if checkout is pending
-        if (data.status !== 'MATCHED') {
-          const shareAmount = role === 'HOST' ? data.user_a_share : data.user_b_share;
-
+        try {
           const res = await fetch('/api/create-payment-intent', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -203,14 +194,15 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           if (intentData.clientSecret) {
             setClientSecret(intentData.clientSecret);
           }
+        } catch (err) {
+          console.error('Payment intent initialization failed:', err);
         }
       }
-      setLoading(false);
     }
 
-    init();
+    setupPaymentIntent();
 
-    // Subscribe to Realtime Updates
+    // Subscribe to real-time updates for live match status
     const channel = supabase
       .channel(`lobby-${lobbyId}`)
       .on(
@@ -225,7 +217,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [lobbyId]);
+  }, [lobbyId, lobby]);
 
   const copyToClipboard = () => {
     if (shareableUrl) {
@@ -235,12 +227,16 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     }
   };
 
-  if (loading) {
-    return <div className="text-center py-12 text-gray-500">Loading lobby details...</div>;
-  }
-
   if (!lobby) {
-    return <div className="text-center py-12 text-red-500">Lobby not found.</div>;
+    return (
+      <div className="max-w-md mx-auto my-12 p-6 bg-white rounded-2xl shadow border text-center space-y-3">
+        <h2 className="text-xl font-bold text-red-600">Lobby Not Found</h2>
+        <p className="text-sm text-gray-600">This deal lobby may have expired or does not exist.</p>
+        <a href="/" className="inline-block bg-blue-600 text-white text-xs font-bold px-4 py-2 rounded-lg">
+          Back to Homepage
+        </a>
+      </div>
+    );
   }
 
   const isHostPendingHold = !lobby.host_payment_intent_id;
@@ -267,7 +263,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
         </span>
       </div>
 
-      {/* Cost Breakdown */}
+      {/* Breakdown */}
       <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm text-gray-700">
         <div className="flex justify-between">
           <span>Deal Type:</span>
@@ -276,7 +272,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           </span>
         </div>
         <div className="flex justify-between">
-          <span>Total Item Price (with Tax):</span>
+          <span>Total Price (with Tax):</span>
           <span className="font-semibold text-gray-900">${lobby.item_price?.toFixed(2)}</span>
         </div>
         <div className="flex justify-between">
@@ -289,21 +285,20 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
         </div>
       </div>
 
-      {/* Checkout Form Container */}
+      {/* Stripe Payment Form */}
       {lobby.status !== 'MATCHED' && clientSecret && (isHostPendingHold || isPartnerPendingHold) && (
         <Elements stripe={stripePromise} options={{ clientSecret }}>
           <CheckoutForm
             lobbyId={lobbyId}
             role={isHostPendingHold ? 'HOST' : 'PARTNER'}
             onSuccess={() => {
-              // Refresh state
               window.location.reload();
             }}
           />
         </Elements>
       )}
 
-      {/* Share Box (Visible when Host has authorized hold and is waiting for partner) */}
+      {/* Invite Box */}
       {lobby.status !== 'MATCHED' && lobby.host_payment_intent_id && !lobby.partner_payment_intent_id && (
         <div className="bg-blue-50/70 border border-blue-200 rounded-2xl p-5 space-y-4">
           <div className="flex items-center gap-3">
