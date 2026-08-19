@@ -81,12 +81,12 @@ function CheckoutForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 bg-gray-50 p-5 rounded-2xl border border-gray-200">
-      <div className="bg-blue-100 text-blue-900 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider">
-        Step 1: Enter Payment Info & Shipping Address ({role})
+    <form onSubmit={handleSubmit} className="space-y-4 bg-blue-50/50 p-5 rounded-2xl border border-blue-200">
+      <div className="bg-blue-600 text-white px-3 py-1 rounded-md text-xs font-bold inline-block uppercase tracking-wider">
+        Authorize Payment Hold ({role})
       </div>
       <h3 className="font-bold text-gray-900 text-base">
-        {role === 'HOST' ? 'Authorize Your Host Payment Hold' : 'Authorize Your Split Share Payment'}
+        {role === 'HOST' ? 'Enter Host Payment Info & Shipping Address' : 'Authorize Your Split Share Payment'}
       </h3>
       <p className="text-xs text-gray-500">
         Funds are authorized on hold and only captured when both parties complete checkout.
@@ -153,7 +153,7 @@ function CheckoutForm({
       <button
         type="submit"
         disabled={!stripe || loading}
-        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl shadow transition text-sm"
+        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 px-4 rounded-xl shadow transition text-sm"
       >
         {loading ? 'Processing Hold...' : `Authorize Payment (${role === 'HOST' ? 'Host Share' : 'Partner Share'})`}
       </button>
@@ -172,6 +172,7 @@ export default function LobbyClientView({
   const [copied, setCopied] = useState(false);
   const [clientSecret, setClientSecret] = useState('');
   const [loadingSecret, setLoadingSecret] = useState(true);
+  const [apiError, setApiError] = useState('');
 
   const shareableUrl = typeof window !== 'undefined' ? `${window.location.origin}/lobby/${lobbyId}` : '';
 
@@ -197,9 +198,12 @@ export default function LobbyClientView({
           const intentData = await res.json();
           if (intentData.clientSecret) {
             setClientSecret(intentData.clientSecret);
+          } else if (intentData.error) {
+            setApiError(intentData.error);
           }
-        } catch (err) {
+        } catch (err: any) {
           console.error('Payment intent initialization failed:', err);
+          setApiError(err.message || 'Failed to initialize Stripe Payment Intent.');
         } finally {
           setLoadingSecret(false);
         }
@@ -267,7 +271,7 @@ export default function LobbyClientView({
               : 'bg-amber-100 text-amber-800 border border-amber-300'
           }`}
         >
-          {lobby.status === 'MATCHED' ? '🎉 MATCH CONFIRMED' : '⏳ Awaiting Partner'}
+          {lobby.status === 'MATCHED' ? '🎉 MATCH CONFIRMED' : '⏳ Awaiting Payment Hold'}
         </span>
       </div>
 
@@ -293,15 +297,23 @@ export default function LobbyClientView({
         </div>
       </div>
 
-      {/* Payment Intent Initializing Spinner */}
+      {/* Loading Spinner for Payment Intent */}
       {loadingSecret && lobby.status !== 'MATCHED' && (
         <div className="p-8 text-center bg-gray-50 rounded-2xl border border-gray-200 space-y-2">
           <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-          <p className="text-sm font-semibold text-gray-700">Setting up secure Stripe checkout...</p>
+          <p className="text-sm font-semibold text-gray-700">Loading secure checkout form...</p>
         </div>
       )}
 
-      {/* Stripe Payment Form */}
+      {/* API Error Message Display */}
+      {apiError && (
+        <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs space-y-1">
+          <p className="font-bold">Stripe Initialization Error:</p>
+          <p>{apiError}</p>
+        </div>
+      )}
+
+      {/* Stripe Payment Form (Renders for Host OR Partner when holds are missing) */}
       {!loadingSecret && lobby.status !== 'MATCHED' && clientSecret && (isHostPendingHold || isPartnerPendingHold) && (
         <Elements stripe={stripePromise} options={{ clientSecret }}>
           <CheckoutForm
