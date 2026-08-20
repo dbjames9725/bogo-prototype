@@ -24,7 +24,7 @@ function CheckoutForm({
   const [name, setName] = useState('');
   const [street, setStreet] = useState('');
   const [city, setCity] = useState('');
-  const [state, setState] = useState('CA');
+  const [state, setState] = useState(''); // Default state cleared to blank
   const [zip, setZip] = useState('');
   const [phone, setPhone] = useState('');
 
@@ -35,6 +35,7 @@ function CheckoutForm({
     setLoading(true);
     setErrorMessage('');
 
+    // Submit Stripe Payment Element
     const { error: submitError } = await elements.submit();
     if (submitError) {
       setErrorMessage(submitError.message || 'Payment submission failed.');
@@ -42,6 +43,7 @@ function CheckoutForm({
       return;
     }
 
+    // Confirm Payment Intent Pre-Authorization Hold
     const { error: confirmError, paymentIntent } = await stripe.confirmPayment({
       elements,
       confirmParams: {
@@ -64,8 +66,10 @@ function CheckoutForm({
         ? { host_payment_intent_id: paymentIntent.id, user_a_address: addressData }
         : { partner_payment_intent_id: paymentIntent.id, user_b_address: addressData };
 
+      // Update Supabase with hold ID
       await supabase.from('lobbies').update(updateData).eq('id', lobbyId);
 
+      // Trigger simultaneous dual-hold capture when Partner authorizes
       if (!isHost) {
         await fetch('/api/confirm-match', {
           method: 'POST',
@@ -80,26 +84,49 @@ function CheckoutForm({
     setLoading(false);
   }
 
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4 bg-blue-50/50 p-5 rounded-2xl border border-blue-200">
-      <div className="bg-blue-600 text-white px-3 py-1 rounded-md text-xs font-bold inline-block uppercase tracking-wider">
-        Authorize Payment Hold ({role})
-      </div>
-      <h3 className="font-bold text-gray-900 text-base">
-        {role === 'HOST' ? 'Enter Host Payment Info & Shipping Address' : 'Authorize Your Split Share Payment'}
-      </h3>
-      <p className="text-xs text-gray-500">
-        Funds are authorized on hold and only captured when both parties complete checkout.
-      </p>
+  const isPartner = role === 'PARTNER';
 
-      <div className="space-y-3">
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className={`space-y-4 p-5 sm:p-6 rounded-2xl border ${
+        isPartner
+          ? 'bg-emerald-50/60 border-emerald-200'
+          : 'bg-blue-50/60 border-blue-200'
+      }`}
+    >
+      <div className="flex items-center justify-between">
+        <div
+          className={`px-3 py-1 rounded-md text-xs font-bold uppercase tracking-wider ${
+            isPartner ? 'bg-emerald-600 text-white' : 'bg-blue-600 text-white'
+          }`}
+        >
+          {isPartner ? '🤝 Partner Checkout' : '👑 Host Setup Step 1'}
+        </div>
+        <span className="text-xs font-semibold text-gray-500">Secure Stripe Hold</span>
+      </div>
+
+      <div>
+        <h3 className="font-bold text-gray-900 text-lg">
+          {isPartner
+            ? 'Join Deal & Authorize Your Split Share'
+            : 'Authorize Host Payment Hold & Enter Shipping Address'}
+        </h3>
+        <p className="text-xs text-gray-600 mt-1">
+          {isPartner
+            ? 'Your card will only be charged when the split is fully confirmed.'
+            : 'Funds are placed on hold. Your card is only charged once a partner joins.'}
+        </p>
+      </div>
+
+      <div className="space-y-3 pt-1">
         <input
           type="text"
           required
           placeholder="Full Name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="w-full px-3 py-2 border rounded-lg text-sm bg-white"
+          className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         <input
           type="text"
@@ -107,7 +134,7 @@ function CheckoutForm({
           placeholder="Street Address"
           value={street}
           onChange={(e) => setStreet(e.target.value)}
-          className="w-full px-3 py-2 border rounded-lg text-sm bg-white"
+          className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         <div className="grid grid-cols-3 gap-2">
           <input
@@ -116,15 +143,15 @@ function CheckoutForm({
             placeholder="City"
             value={city}
             onChange={(e) => setCity(e.target.value)}
-            className="px-3 py-2 border rounded-lg text-sm bg-white"
+            className="px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <input
             type="text"
             required
             placeholder="State (e.g. CA)"
             value={state}
-            onChange={(e) => setState(e.target.value)}
-            className="px-3 py-2 border rounded-lg text-sm bg-white uppercase"
+            onChange={(e) => setState(e.target.value.toUpperCase())}
+            className="px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase"
           />
           <input
             type="text"
@@ -132,7 +159,7 @@ function CheckoutForm({
             placeholder="ZIP Code"
             value={zip}
             onChange={(e) => setZip(e.target.value)}
-            className="px-3 py-2 border rounded-lg text-sm bg-white"
+            className="px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
         <input
@@ -140,7 +167,7 @@ function CheckoutForm({
           placeholder="Phone Number (for shipping updates)"
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
-          className="w-full px-3 py-2 border rounded-lg text-sm bg-white"
+          className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>
 
@@ -148,14 +175,25 @@ function CheckoutForm({
         <PaymentElement />
       </div>
 
-      {errorMessage && <div className="text-xs text-red-600 font-semibold">{errorMessage}</div>}
+      {/* Error Message displayed ONLY if form submission fails */}
+      {errorMessage && (
+        <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs font-semibold">
+          {errorMessage}
+        </div>
+      )}
 
       <button
         type="submit"
         disabled={!stripe || loading}
-        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 px-4 rounded-xl shadow transition text-sm"
+        className={`w-full text-white font-bold py-3.5 px-4 rounded-xl shadow transition text-sm flex items-center justify-center gap-2 ${
+          isPartner
+            ? 'bg-emerald-600 hover:bg-emerald-700'
+            : 'bg-blue-600 hover:bg-blue-700'
+        }`}
       >
-        {loading ? 'Processing Hold...' : `Authorize Payment (${role === 'HOST' ? 'Host Share' : 'Partner Share'})`}
+        {loading
+          ? 'Processing Pre-Auth Hold...'
+          : `Authorize Payment (${isPartner ? 'Partner Share' : 'Host Share'})`}
       </button>
     </form>
   );
@@ -256,14 +294,30 @@ export default function LobbyClientView({
 
   return (
     <div className="max-w-2xl mx-auto p-4 sm:p-6 bg-white rounded-2xl shadow-sm border border-gray-200 space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center pb-4 border-b border-gray-100">
+      {/* Distinct Header: Host (Blue Theme) vs Partner (Emerald Theme) */}
+      <div className="flex justify-between items-start pb-4 border-b border-gray-100">
         <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span
+              className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
+                isHostPendingHold
+                  ? 'bg-blue-100 text-blue-800'
+                  : 'bg-emerald-100 text-emerald-800'
+              }`}
+            >
+              {isHostPendingHold
+                ? '👑 HOST LOBBY CREATOR VIEW'
+                : isPartnerPendingHold
+                ? '🤝 PARTNER INVITATION VIEW'
+                : '🎉 MATCHED & COMPLETED'}
+            </span>
+          </div>
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{lobby.item_name}</h1>
           <p className="text-xs text-gray-500 mt-0.5">
             Lobby ID: <span className="font-mono">{lobbyId}</span>
           </p>
         </div>
+
         <span
           className={`px-3 py-1 text-xs font-bold rounded-full ${
             lobby.status === 'MATCHED'
@@ -271,33 +325,44 @@ export default function LobbyClientView({
               : 'bg-amber-100 text-amber-800 border border-amber-300'
           }`}
         >
-          {lobby.status === 'MATCHED' ? '🎉 MATCH CONFIRMED' : '⏳ Awaiting Payment Hold'}
+          {lobby.status === 'MATCHED' ? '🎉 MATCH CONFIRMED' : '⏳ Awaiting Partner'}
         </span>
       </div>
 
-      {/* Breakdown */}
-      <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm text-gray-700">
-        <div className="flex justify-between">
-          <span>Deal Type:</span>
-          <span className="font-semibold text-gray-900">
+      {/* Cost Breakdown */}
+      <div
+        className={`rounded-2xl p-5 space-y-2 text-sm ${
+          isPartnerPendingHold
+            ? 'bg-emerald-50/70 border border-emerald-200/80 text-emerald-950'
+            : 'bg-gray-50 border border-gray-200/70 text-gray-700'
+        }`}
+      >
+        <div className="flex justify-between items-center">
+          <span>Deal Promotion:</span>
+          <span className="font-bold text-gray-900">
             {lobby.deal_type === 'BOGO_50' ? 'Buy 1 Get 1 50% OFF' : 'Buy 1 Get 1 FREE'}
           </span>
         </div>
-        <div className="flex justify-between">
-          <span>Total Price (with Tax):</span>
-          <span className="font-semibold text-gray-900">${lobby.item_price?.toFixed(2)}</span>
+        <div className="flex justify-between items-center">
+          <span>Total Item Price (with Tax):</span>
+          <span className="font-bold text-gray-900">${lobby.item_price?.toFixed(2)}</span>
         </div>
-        <div className="flex justify-between">
-          <span>Host Share:</span>
-          <span className="font-semibold text-blue-600">${lobby.user_a_share?.toFixed(2)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span>Partner Share:</span>
-          <span className="font-semibold text-emerald-600">${lobby.user_b_share?.toFixed(2)}</span>
+
+        <div className="pt-2 border-t border-gray-200/80 grid grid-cols-2 gap-3">
+          <div className="bg-white/80 p-3 rounded-xl border border-gray-200/50">
+            <span className="text-[10px] font-bold uppercase text-blue-600 block">Host Share</span>
+            <span className="text-lg font-black text-blue-900">${lobby.user_a_share?.toFixed(2)}</span>
+          </div>
+          <div className="bg-white/80 p-3 rounded-xl border border-gray-200/50">
+            <span className="text-[10px] font-bold uppercase text-emerald-600 block">
+              {isPartnerPendingHold ? '👉 Your Split Share' : 'Partner Share'}
+            </span>
+            <span className="text-lg font-black text-emerald-900">${lobby.user_b_share?.toFixed(2)}</span>
+          </div>
         </div>
       </div>
 
-      {/* Loading Spinner for Payment Intent */}
+      {/* Loading Spinner */}
       {loadingSecret && lobby.status !== 'MATCHED' && (
         <div className="p-8 text-center bg-gray-50 rounded-2xl border border-gray-200 space-y-2">
           <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
@@ -305,15 +370,15 @@ export default function LobbyClientView({
         </div>
       )}
 
-      {/* API Error Message Display */}
+      {/* API Errors */}
       {apiError && (
         <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs space-y-1">
-          <p className="font-bold">Stripe Initialization Error:</p>
+          <p className="font-bold">Initialization Notice:</p>
           <p>{apiError}</p>
         </div>
       )}
 
-      {/* Stripe Payment Form (Renders for Host OR Partner when holds are missing) */}
+      {/* Stripe Payment Form */}
       {!loadingSecret && lobby.status !== 'MATCHED' && clientSecret && (isHostPendingHold || isPartnerPendingHold) && (
         <Elements stripe={stripePromise} options={{ clientSecret }}>
           <CheckoutForm
@@ -326,11 +391,11 @@ export default function LobbyClientView({
         </Elements>
       )}
 
-      {/* Invite Box (Shows ONLY after Host has completed payment authorization) */}
+      {/* Host Share Link Box (Revealed ONLY after Host pre-auth is authorized) */}
       {!loadingSecret && lobby.status !== 'MATCHED' && lobby.host_payment_intent_id && !lobby.partner_payment_intent_id && (
-        <div className="bg-blue-50/70 border border-blue-200 rounded-2xl p-5 space-y-4">
+        <div className="bg-blue-50/80 border border-blue-200 rounded-2xl p-5 space-y-4">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-600 text-white rounded-xl">
+            <div className="p-2 bg-blue-600 text-white rounded-xl shadow-sm">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
@@ -341,8 +406,8 @@ export default function LobbyClientView({
               </svg>
             </div>
             <div>
-              <h3 className="font-bold text-blue-950 text-base">Share Partner Invite Link</h3>
-              <p className="text-xs text-blue-700">Host payment authorized! Send this link to your partner.</p>
+              <h3 className="font-bold text-blue-950 text-base">Host Hold Complete! Share Invite Link</h3>
+              <p className="text-xs text-blue-700">Send this unique link to a partner so they can join and pay their half.</p>
             </div>
           </div>
 
@@ -351,7 +416,7 @@ export default function LobbyClientView({
               type="text"
               readOnly
               value={shareableUrl}
-              className="w-full bg-white border border-blue-200 rounded-xl px-3 py-2.5 text-xs text-gray-700 font-mono focus:outline-none"
+              className="w-full bg-white border border-blue-200 rounded-xl px-3.5 py-2.5 text-xs text-gray-700 font-mono focus:outline-none"
             />
             <button
               type="button"
@@ -361,6 +426,11 @@ export default function LobbyClientView({
               {copied ? '✓ Link Copied!' : 'Copy Invite Link'}
             </button>
           </div>
+
+          <div className="pt-2 border-t border-blue-100 flex items-center justify-center gap-2 text-xs text-blue-800">
+            <span className="inline-block w-2 h-2 rounded-full bg-blue-500 animate-ping"></span>
+            <span>Waiting for partner to join and authorize payment...</span>
+          </div>
         </div>
       )}
 
@@ -368,9 +438,9 @@ export default function LobbyClientView({
       {lobby.status === 'MATCHED' && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 text-center space-y-4">
           <div className="text-3xl">🎉</div>
-          <h2 className="text-xl font-bold text-emerald-950">Match Confirmed & Payment Captured!</h2>
+          <h2 className="text-xl font-bold text-emerald-950">Match Confirmed & Both Payments Captured!</h2>
           <p className="text-sm text-emerald-800">
-            Both payment authorizations succeeded. Download the return shipping label below:
+            Both payment holds succeeded and have been captured. Download your shipping label below:
           </p>
           {lobby.shipping_label_url && (
             <a
