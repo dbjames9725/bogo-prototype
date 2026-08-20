@@ -10,10 +10,12 @@ const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY 
 function CheckoutForm({
   lobbyId,
   role,
+  itemPrice,
   onSuccess,
 }: {
   lobbyId: string;
   role: 'HOST' | 'PARTNER';
+  itemPrice: number;
   onSuccess: () => void;
 }) {
   const stripe = useStripe();
@@ -24,9 +26,12 @@ function CheckoutForm({
   const [name, setName] = useState('');
   const [street, setStreet] = useState('');
   const [city, setCity] = useState('');
-  const [state, setState] = useState(''); // Default state cleared to blank
+  const [state, setState] = useState(''); // State field left blank for user input
   const [zip, setZip] = useState('');
   const [phone, setPhone] = useState('');
+
+  // 2.5% Platform Fee Calculation
+  const platformFee = itemPrice * 0.025;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -38,12 +43,12 @@ function CheckoutForm({
     // Submit Stripe Payment Element
     const { error: submitError } = await elements.submit();
     if (submitError) {
-      setErrorMessage(submitError.message || 'Payment submission failed.');
+      setErrorMessage(submitError.message || 'Please verify your payment details.');
       setLoading(false);
       return;
     }
 
-    // Confirm Payment Intent Pre-Authorization Hold
+    // Confirm Payment Intent Pre-Auth Hold
     const { error: confirmError, paymentIntent } = await stripe.confirmPayment({
       elements,
       confirmParams: {
@@ -53,7 +58,7 @@ function CheckoutForm({
     });
 
     if (confirmError) {
-      setErrorMessage(confirmError.message || 'Payment confirmation failed.');
+      setErrorMessage(confirmError.message || 'Payment hold failed.');
       setLoading(false);
       return;
     }
@@ -66,10 +71,8 @@ function CheckoutForm({
         ? { host_payment_intent_id: paymentIntent.id, user_a_address: addressData }
         : { partner_payment_intent_id: paymentIntent.id, user_b_address: addressData };
 
-      // Update Supabase with hold ID
       await supabase.from('lobbies').update(updateData).eq('id', lobbyId);
 
-      // Trigger simultaneous dual-hold capture when Partner authorizes
       if (!isHost) {
         await fetch('/api/confirm-match', {
           method: 'POST',
@@ -90,9 +93,7 @@ function CheckoutForm({
     <form
       onSubmit={handleSubmit}
       className={`space-y-4 p-5 sm:p-6 rounded-2xl border ${
-        isPartner
-          ? 'bg-emerald-50/60 border-emerald-200'
-          : 'bg-blue-50/60 border-blue-200'
+        isPartner ? 'bg-emerald-50/60 border-emerald-200' : 'bg-blue-50/60 border-blue-200'
       }`}
     >
       <div className="flex items-center justify-between">
@@ -172,10 +173,10 @@ function CheckoutForm({
       </div>
 
       <div className="pt-2">
-        <PaymentElement />
+        <PaymentElement options={{ layout: 'tabs' }} />
       </div>
 
-      {/* Error Message displayed ONLY if form submission fails */}
+      {/* Only display errors if form submission actually fails */}
       {errorMessage && (
         <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs font-semibold">
           {errorMessage}
@@ -186,9 +187,7 @@ function CheckoutForm({
         type="submit"
         disabled={!stripe || loading}
         className={`w-full text-white font-bold py-3.5 px-4 rounded-xl shadow transition text-sm flex items-center justify-center gap-2 ${
-          isPartner
-            ? 'bg-emerald-600 hover:bg-emerald-700'
-            : 'bg-blue-600 hover:bg-blue-700'
+          isPartner ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'
         }`}
       >
         {loading
@@ -214,6 +213,10 @@ export default function LobbyClientView({
 
   const shareableUrl = typeof window !== 'undefined' ? `${window.location.origin}/lobby/${lobbyId}` : '';
 
+  // 2.5% Platform Fee Calculation
+  const originalPrice = lobby?.item_price || 0;
+  const platformFee = originalPrice * 0.025;
+
   useEffect(() => {
     async function setupPaymentIntent() {
       if (!lobby) return;
@@ -221,14 +224,17 @@ export default function LobbyClientView({
       if (lobby.status !== 'MATCHED') {
         const isHostPending = !lobby.host_payment_intent_id;
         const role = isHostPending ? 'HOST' : 'PARTNER';
-        const shareAmount = role === 'HOST' ? lobby.user_a_share : lobby.user_b_share;
+       
+        // Base share plus 2.5% platform fee
+        const baseShare = role === 'HOST' ? lobby.user_a_share : lobby.user_b_share;
+        const totalAmountWithFee = baseShare + platformFee;
 
         try {
           const res = await fetch('/api/create-payment-intent', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              amount: shareAmount,
+              amount: totalAmountWithFee,
               lobbyId,
               role,
             }),
@@ -252,7 +258,6 @@ export default function LobbyClientView({
 
     setupPaymentIntent();
 
-    // Subscribe to real-time updates for live match status
     const channel = supabase
       .channel(`lobby-${lobbyId}`)
       .on(
@@ -294,7 +299,7 @@ export default function LobbyClientView({
 
   return (
     <div className="max-w-2xl mx-auto p-4 sm:p-6 bg-white rounded-2xl shadow-sm border border-gray-200 space-y-6">
-      {/* Distinct Header: Host (Blue Theme) vs Partner (Emerald Theme) */}
+      {/* Distinct Header: Host (Blue) vs Partner (Emerald) */}
       <div className="flex justify-between items-start pb-4 border-b border-gray-100">
         <div>
           <div className="flex items-center gap-2 mb-1">
@@ -329,9 +334,9 @@ export default function LobbyClientView({
         </span>
       </div>
 
-      {/* Cost Breakdown */}
+      {/* Item Price & Transparent Fee Breakdown */}
       <div
-        className={`rounded-2xl p-5 space-y-2 text-sm ${
+        className={`rounded-2xl p-5 space-y-3 text-sm ${
           isPartnerPendingHold
             ? 'bg-emerald-50/70 border border-emerald-200/80 text-emerald-950'
             : 'bg-gray-50 border border-gray-200/70 text-gray-700'
@@ -344,20 +349,40 @@ export default function LobbyClientView({
           </span>
         </div>
         <div className="flex justify-between items-center">
-          <span>Total Item Price (with Tax):</span>
-          <span className="font-bold text-gray-900">${lobby.item_price?.toFixed(2)}</span>
+          <span>Original BOGO Item Price:</span>
+          <span className="font-bold text-gray-900">${originalPrice.toFixed(2)}</span>
+        </div>
+
+        {/* Fee Line Items */}
+        <div className="pt-2 border-t border-gray-200/80 space-y-1.5 text-xs text-gray-600">
+          <div className="flex justify-between">
+            <span>50/50 Item Split Share:</span>
+            <span className="font-semibold text-gray-900">${(originalPrice / 2).toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between text-blue-700 font-medium">
+            <span>BOGO Split Platform Fee (2.5%):</span>
+            <span className="font-semibold">+${platformFee.toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between text-gray-500">
+            <span>Stripe Payment Processing Fee:</span>
+            <span>Calculated separately at checkout</span>
+          </div>
         </div>
 
         <div className="pt-2 border-t border-gray-200/80 grid grid-cols-2 gap-3">
           <div className="bg-white/80 p-3 rounded-xl border border-gray-200/50">
-            <span className="text-[10px] font-bold uppercase text-blue-600 block">Host Share</span>
-            <span className="text-lg font-black text-blue-900">${lobby.user_a_share?.toFixed(2)}</span>
+            <span className="text-[10px] font-bold uppercase text-blue-600 block">Host Share (+ Fee)</span>
+            <span className="text-lg font-black text-blue-900">
+              ${(lobby.user_a_share + platformFee).toFixed(2)}
+            </span>
           </div>
           <div className="bg-white/80 p-3 rounded-xl border border-gray-200/50">
             <span className="text-[10px] font-bold uppercase text-emerald-600 block">
-              {isPartnerPendingHold ? '👉 Your Split Share' : 'Partner Share'}
+              {isPartnerPendingHold ? '👉 Your Split Share (+ Fee)' : 'Partner Share (+ Fee)'}
             </span>
-            <span className="text-lg font-black text-emerald-900">${lobby.user_b_share?.toFixed(2)}</span>
+            <span className="text-lg font-black text-emerald-900">
+              ${(lobby.user_b_share + platformFee).toFixed(2)}
+            </span>
           </div>
         </div>
       </div>
@@ -370,7 +395,7 @@ export default function LobbyClientView({
         </div>
       )}
 
-      {/* API Errors */}
+      {/* API Error Display */}
       {apiError && (
         <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs space-y-1">
           <p className="font-bold">Initialization Notice:</p>
@@ -384,6 +409,7 @@ export default function LobbyClientView({
           <CheckoutForm
             lobbyId={lobbyId}
             role={isHostPendingHold ? 'HOST' : 'PARTNER'}
+            itemPrice={originalPrice}
             onSuccess={() => {
               window.location.reload();
             }}
@@ -391,7 +417,7 @@ export default function LobbyClientView({
         </Elements>
       )}
 
-      {/* Host Share Link Box (Revealed ONLY after Host pre-auth is authorized) */}
+      {/* Host Share Link Box */}
       {!loadingSecret && lobby.status !== 'MATCHED' && lobby.host_payment_intent_id && !lobby.partner_payment_intent_id && (
         <div className="bg-blue-50/80 border border-blue-200 rounded-2xl p-5 space-y-4">
           <div className="flex items-center gap-3">
@@ -407,7 +433,7 @@ export default function LobbyClientView({
             </div>
             <div>
               <h3 className="font-bold text-blue-950 text-base">Host Hold Complete! Share Invite Link</h3>
-              <p className="text-xs text-blue-700">Send this unique link to a partner so they can join and pay their half.</p>
+              <p className="text-xs text-blue-700">Send this link to a partner so they can join and pay their half.</p>
             </div>
           </div>
 
@@ -462,3 +488,4 @@ export default function LobbyClientView({
     </div>
   );
 }
+
