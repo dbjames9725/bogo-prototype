@@ -35,6 +35,7 @@ function CheckoutForm({
     setLoading(true);
     setErrorMessage('');
 
+    // Submit Stripe Payment Element
     const { error: submitError } = await elements.submit();
     if (submitError) {
       setErrorMessage(submitError.message || 'Please check your payment details.');
@@ -42,6 +43,7 @@ function CheckoutForm({
       return;
     }
 
+    // Confirm Pre-Auth Hold
     const { error: confirmError, paymentIntent } = await stripe.confirmPayment({
       elements,
       confirmParams: {
@@ -51,7 +53,7 @@ function CheckoutForm({
     });
 
     if (confirmError) {
-      setErrorMessage(confirmError.message || 'Payment hold failed.');
+      setErrorMessage(confirmError.message || 'Payment authorization failed.');
       setLoading(false);
       return;
     }
@@ -64,13 +66,15 @@ function CheckoutForm({
         ? { host_payment_intent_id: paymentIntent.id, user_a_address: addressData }
         : { partner_payment_intent_id: paymentIntent.id, user_b_address: addressData };
 
+      // 1. Update Supabase with verified hold ID
       await supabase.from('lobbies').update(updateData).eq('id', lobbyId);
 
-      // Store local storage flag if this user is the Host
+      // 2. Set LocalStorage Flag
       if (isHost && typeof window !== 'undefined') {
         localStorage.setItem(`hosted_${lobbyId}`, 'true');
       }
 
+      // 3. If Partner completes authorization, trigger simultaneous dual capture
       if (!isHost) {
         await fetch('/api/confirm-match', {
           method: 'POST',
@@ -219,44 +223,60 @@ export default function LobbyClientView({
   const totalShareWithFees = baseShare + platformFee + stripeFee;
 
   useEffect(() => {
-    // Check if current browser created this lobby
+    // Determine host status from LocalStorage or Host Hold ID
     if (typeof window !== 'undefined') {
       const hostedFlag = localStorage.getItem(`hosted_${lobbyId}`);
       if (hostedFlag === 'true' || !lobby?.host_payment_intent_id) {
         setIsHostUser(true);
+      } else {
+        setIsHostUser(false);
       }
     }
 
     async function setupPaymentIntent() {
       if (!lobby) return;
 
-      if (lobby.status !== 'MATCHED') {
-        const isHostPending = !lobby.host_payment_intent_id;
-        const role = isHostPending ? 'HOST' : 'PARTNER';
+      // If lobby is already matched, stop
+      if (lobby.status === 'MATCHED') {
+        setLoadingSecret(false);
+        return;
+      }
 
-        try {
-          const res = await fetch('/api/create-payment-intent', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              amount: totalShareWithFees,
-              lobbyId,
-              role,
-            }),
-          });
-          const intentData = await res.json();
-          if (intentData.clientSecret) {
-            setClientSecret(intentData.clientSecret);
-          } else if (intentData.error) {
-            setApiError(intentData.error);
-          }
-        } catch (err: any) {
-          console.error('Payment intent initialization failed:', err);
-          setApiError(err.message || 'Failed to initialize Stripe Payment Intent.');
-        } finally {
-          setLoadingSecret(false);
+      // Prevent generating multiple client secrets if one is already loaded
+      if (clientSecret) {
+        setLoadingSecret(false);
+        return;
+      }
+
+      const isHostPending = !lobby.host_payment_intent_id;
+      const role = isHostPending ? 'HOST' : 'PARTNER';
+
+      // If Host has already authorized hold and this is Host viewing, no need for new payment intent
+      if (isHostUser && !isHostPending) {
+        setLoadingSecret(false);
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/create-payment-intent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            amount: totalShareWithFees,
+            lobbyId,
+            role,
+          }),
+        });
+        const intentData = await res.json();
+        if (intentData.clientSecret) {
+          setClientSecret(intentData.clientSecret);
+        } else if (intentData.error) {
+          setApiError(intentData.error);
         }
-      } else {
+      } catch (err: any) {
+        console.error('Payment intent initialization failed:', err);
+        setApiError(err.message || 'Failed to initialize Stripe Payment Intent.');
+      } finally {
         setLoadingSecret(false);
       }
     }
@@ -277,7 +297,7 @@ export default function LobbyClientView({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [lobbyId, lobby?.id, lobby?.host_payment_intent_id]);
+  }, [lobbyId, lobby?.id, lobby?.host_payment_intent_id, clientSecret, isHostUser]);
 
   const copyToClipboard = () => {
     if (shareableUrl) {
@@ -333,7 +353,7 @@ export default function LobbyClientView({
         </span>
       </div>
 
-      {/* Itemized Cost Breakdown */}
+      {/* Cost Breakdown */}
       <div
         className={`rounded-2xl p-5 space-y-3 text-sm ${
           !isHostUser
@@ -390,7 +410,7 @@ export default function LobbyClientView({
         </div>
       )}
 
-      {/* API Error Display */}
+      {/* API Errors */}
       {apiError && (
         <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs space-y-1">
           <p className="font-bold">Initialization Notice:</p>
@@ -398,7 +418,7 @@ export default function LobbyClientView({
         </div>
       )}
 
-      {/* Stripe Payment Form (Renders when card hold is needed) */}
+      {/* Stripe Payment Form */}
       {!loadingSecret &&
         lobby.status !== 'MATCHED' &&
         clientSecret &&
