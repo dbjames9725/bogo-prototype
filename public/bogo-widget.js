@@ -1,25 +1,20 @@
 (function () {
-  // Configuration
   const BOGO_APP_URL = 'https://bogo-prototype-wheat.vercel.app';
 
   function initBogoWidget() {
-    // Look for product page price/title on merchant DOM
     const priceElement = document.querySelector('[data-product-price], .price, .product-price, .current-price');
     const titleElement = document.querySelector('[data-product-title], .product-title, h1.product-title, h1');
 
     if (!priceElement) return;
 
-    // Parse raw price text into number
     const priceText = priceElement.innerText || priceElement.textContent;
     const itemPrice = parseFloat(priceText.replace(/[^0-9.]/g, ''));
     const itemName = titleElement ? (titleElement.innerText || titleElement.textContent).trim() : 'BOGO Item';
 
     if (!itemPrice || isNaN(itemPrice)) return;
 
-    // Calculate split preview price
     const halfPrice = (itemPrice / 2).toFixed(2);
 
-    // Create container and button
     const widgetContainer = document.createElement('div');
     widgetContainer.className = 'bogo-split-widget-container';
     widgetContainer.style.cssText = 'margin: 16px 0; font-family: system-ui, -apple-system, sans-serif;';
@@ -49,7 +44,6 @@
       </button>
     `;
 
-    // Insert widget right after the Add to Cart button or price
     const addToCartBtn = document.querySelector('form[action*="/cart/add"], button[name="add"], .add-to-cart, #AddToCart');
     if (addToCartBtn && addToCartBtn.parentNode) {
       addToCartBtn.parentNode.insertBefore(widgetContainer, addToCartBtn.nextSibling);
@@ -57,12 +51,20 @@
       priceElement.parentNode.appendChild(widgetContainer);
     }
 
-    // Click event to initiate lobby creation
     document.getElementById('bogo-split-btn').addEventListener('click', async function () {
       const btn = this;
       btn.disabled = true;
       btn.style.opacity = '0.75';
       btn.innerText = 'Creating BOGO Lobby...';
+
+      // Automatically capture selected variants (Size/Color) from merchant dropdowns
+      const selectedVariant = {};
+      const selectElements = document.querySelectorAll('select, input[type="radio"]:checked');
+      selectElements.forEach((el) => {
+        if (el.name || el.id) {
+          selectedVariant[el.name || el.id] = el.value;
+        }
+      });
 
       try {
         const response = await fetch(`${BOGO_APP_URL}/api/create-lobby`, {
@@ -74,13 +76,13 @@
             dealType: 'BOGO_FREE',
             userAShare: itemPrice / 2,
             userBShare: itemPrice / 2,
+            userAVariant: selectedVariant,
           }),
         });
 
         const data = await response.json();
 
         if (data.lobbyId) {
-          // Redirect to the newly created lobby
           window.location.href = `${BOGO_APP_URL}/lobby/${data.lobbyId}`;
         } else {
           alert('Could not start lobby: ' + (data.error || 'Unknown error'));
@@ -95,7 +97,6 @@
     });
   }
 
-  // Initialize on page load
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initBogoWidget);
   } else {

@@ -6,7 +6,6 @@ import Link from 'next/link';
 export default function MerchantDemoPage() {
   return (
     <div className="min-h-screen bg-gray-100 py-10 px-4 sm:px-6 font-sans">
-      {/* Top Banner */}
       <div className="max-w-4xl mx-auto mb-6 bg-amber-500 text-white p-4 rounded-2xl shadow-sm flex items-center justify-between text-xs sm:text-sm font-semibold">
         <span>🛍️ DEMO MERCHANT STORE: NIKE BOGO PROMOTION</span>
         <Link href="/" className="underline hover:text-amber-100">
@@ -14,9 +13,7 @@ export default function MerchantDemoPage() {
         </Link>
       </div>
 
-      {/* Simulated Store Product Card */}
       <div className="max-w-4xl mx-auto bg-white rounded-3xl shadow-lg border border-gray-200 overflow-hidden grid grid-cols-1 md:grid-cols-2">
-        {/* Product Image */}
         <div className="bg-gray-50 p-8 flex items-center justify-center border-b md:border-b-0 md:border-r border-gray-200">
           <div className="text-center space-y-4">
             <div className="text-8xl">👟</div>
@@ -26,7 +23,6 @@ export default function MerchantDemoPage() {
           </div>
         </div>
 
-        {/* Product Details & Purchase Form */}
         <div className="p-6 sm:p-8 space-y-6 flex flex-col justify-between">
           <div className="space-y-3">
             <span className="text-xs font-bold uppercase text-gray-400 tracking-wider">
@@ -47,7 +43,25 @@ export default function MerchantDemoPage() {
             </div>
           </div>
 
-          {/* Standard Add to Cart Form */}
+          {/* Product Options */}
+          <div className="space-y-3 pt-2">
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">Select Size</label>
+              <select name="size" className="w-full border border-gray-300 rounded-xl p-2.5 text-sm bg-white">
+                <option value="US 9">US 9</option>
+                <option value="US 10">US 10</option>
+                <option value="US 11">US 11</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">Select Color</label>
+              <select name="color" className="w-full border border-gray-300 rounded-xl p-2.5 text-sm bg-white">
+                <option value="Black/White">Black / White</option>
+                <option value="Navy/Blue">Navy / Blue</option>
+              </select>
+            </div>
+          </div>
+
           <div className="space-y-3 pt-4 border-t border-gray-100">
             <button
               type="button"
@@ -55,17 +69,10 @@ export default function MerchantDemoPage() {
             >
               Add to Cart ($130.00)
             </button>
-
-            {/* The BOGO Widget Script automatically injects the "Split This Deal" button right here! */}
-          </div>
-
-          <div className="pt-2 text-[11px] text-gray-400 text-center">
-            🔒 Standard 30-day Merchant Return Policy Applies
           </div>
         </div>
       </div>
 
-      {/* Embed the BOGO Split Widget Script */}
       <Script src="/bogo-widget.js" strategy="afterInteractive" />
     </div>
   );
