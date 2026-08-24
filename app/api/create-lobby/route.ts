@@ -1,23 +1,22 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
-// Helper for CORS headers
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
-// Handle browser pre-flight checks (required for cross-site requests)
 export async function OPTIONS() {
   return NextResponse.json({}, { headers: corsHeaders });
 }
 
 export async function POST(req: Request) {
   try {
-    const { itemName, itemPrice, dealType, userAShare, userBShare } = await req.json();
+    const body = await req.json();
+    const { itemName, itemPrice, dealType, userAShare, userBShare, userAVariant } = body;
 
-    if (!itemName || !itemPrice || !userAShare || !userBShare) {
+    if (!itemName || !itemPrice) {
       return NextResponse.json(
         { error: 'Missing required lobby fields' },
         { status: 400, headers: corsHeaders }
@@ -25,10 +24,9 @@ export async function POST(req: Request) {
     }
 
     const priceNum = parseFloat(itemPrice);
-    const hostShareNum = parseFloat(userAShare);
-    const partnerShareNum = parseFloat(userBShare);
+    const hostShareNum = userAShare ? parseFloat(userAShare) : priceNum / 2;
+    const partnerShareNum = userBShare ? parseFloat(userBShare) : priceNum / 2;
 
-    // Insert populating both new and legacy column names
     const { data: lobby, error } = await supabase
       .from('lobbies')
       .insert([
@@ -42,6 +40,7 @@ export async function POST(req: Request) {
           host_share: hostShareNum,
           partner_share: partnerShareNum,
           status: 'PENDING',
+          user_a_variant: userAVariant || {},
           host_payment_intent_id: null,
           partner_payment_intent_id: null,
         },
