@@ -23,43 +23,57 @@ export async function POST(req: Request) {
       );
     }
 
-    // 1. Fetch current lobby record
-    const { data: lobby, error } = await supabase
-      .from('lobbies')
-      .select('*')
-      .eq('id', lobbyId)
-      .single();
+    // 1. Retry polling loop: Query Supabase up to 5 times (2.5s total) for both holds to settle
+    let lobby = null;
+    for (let i = 0; i < 5; i++) {
+      const { data } = await supabase
+        .from('lobbies')
+        .select('*')
+        .eq('id', lobbyId)
+        .single();
 
-    if (error || !lobby) {
-      return NextResponse.json(
-        { error: 'Lobby not found' },
-        { status: 404, headers: corsHeaders }
-      );
+      if (data) {
+        if (data.status === 'MATCHED') {
+          return NextResponse.json({ success: true, status: 'MATCHED' }, { headers: corsHeaders });
+        }
+
+        if (data.host_payment_intent_id && data.partner_payment_intent_id) {
+          lobby = data;
+          break;
+        }
+      }
+
+      // Wait 500ms before retrying database read
+      await new Promise((res) => setTimeout(res, 500));
+      lobby = data;
     }
 
-    // If already marked MATCHED in Supabase, return success immediately
-    if (lobby.status === 'MATCHED') {
-      return NextResponse.json({ success: true, status: 'MATCHED' }, { headers: corsHeaders });
+    if (!lobby) {
+      return NextResponse.json(
+        { error: 'Lobby not found in database' },
+        { status: 404, headers: corsHeaders }
+      );
     }
 
     const { host_payment_intent_id, partner_payment_intent_id } = lobby;
 
     if (!host_payment_intent_id || !partner_payment_intent_id) {
       return NextResponse.json(
-        { error: 'Both payment holds are required before confirming match' },
+        {
+          error: `Missing payment hold: Host (${host_payment_intent_id ? 'OK' : 'MISSING'}), Partner (${partner_payment_intent_id ? 'OK' : 'MISSING'})`
+        },
         { status: 400, headers: corsHeaders }
       );
     }
 
-    // 2. Safely capture each hold independently, ignoring "already captured" responses
-    const captureIntentSafely = async (intentId: string) => {
+    // 2. Safely capture both Stripe payment holds
+    const captureSafely = async (intentId: string) => {
       try {
         const intent = await stripe.paymentIntents.retrieve(intentId);
         if (intent.status === 'requires_capture') {
           await stripe.paymentIntents.capture(intentId);
         }
       } catch (err: any) {
-        // If captured by Stripe Webhook concurrently, ignore the error
         if (!err.message?.includes('already been captured')) {
           throw err;
         }
@@ -67,11 +81,11 @@ export async function POST(req: Request) {
     };
 
     await Promise.all([
-      captureIntentSafely(host_payment_intent_id),
-      captureIntentSafely(partner_payment_intent_id),
+      captureSafely(host_payment_intent_id),
+      captureSafely(partner_payment_intent_id),
     ]);
 
-    // 3. Update Supabase lobby status to MATCHED
+    // 3. Mark lobby status as MATCHED in Supabase
     await supabase
       .from('lobbies')
       .update({ status: 'MATCHED' })
@@ -84,7 +98,7 @@ export async function POST(req: Request) {
   } catch (err: any) {
     console.error('Confirm match error:', err.message);
     return NextResponse.json(
-      { error: err.message || 'Failed processing match confirmation' },
+      { error: err.message || 'Failed processing dual-hold capture' },
       { status: 500, headers: corsHeaders }
     );
   }
