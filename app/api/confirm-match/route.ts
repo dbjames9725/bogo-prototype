@@ -23,21 +23,36 @@ export async function POST(req: Request) {
       );
     }
 
-    // 1. Retrieve full lobby details from Supabase
-    const { data: lobby, error } = await supabase
-      .from('lobbies')
-      .select('*')
-      .eq('id', lobbyId)
-      .single();
+    // Retry loop: Query database up to 3 times to allow pending writes to settle
+    let lobby = null;
+    for (let i = 0; i < 3; i++) {
+      const { data, error } = await supabase
+        .from('lobbies')
+        .select('*')
+        .eq('id', lobbyId)
+        .single();
 
-    if (error || !lobby) {
+      if (data && data.host_payment_intent_id && data.partner_payment_intent_id) {
+        lobby = data;
+        break;
+      }
+
+      if (data && data.status === 'MATCHED') {
+        return NextResponse.json({ success: true, status: 'MATCHED' }, { headers: corsHeaders });
+      }
+
+      // Wait 500ms before retrying
+      await new Promise((res) => setTimeout(res, 500));
+      lobby = data;
+    }
+
+    if (!lobby) {
       return NextResponse.json(
         { error: 'Lobby not found' },
         { status: 404, headers: corsHeaders }
       );
     }
 
-    // 2. Return success if already matched
     if (lobby.status === 'MATCHED') {
       return NextResponse.json({ success: true, status: 'MATCHED' }, { headers: corsHeaders });
     }
@@ -46,18 +61,20 @@ export async function POST(req: Request) {
 
     if (!host_payment_intent_id || !partner_payment_intent_id) {
       return NextResponse.json(
-        { error: 'Cannot capture: Missing Host or Partner payment hold' },
+        {
+          error: `Missing hold: Host (${host_payment_intent_id ? 'OK' : 'MISSING'}), Partner (${partner_payment_intent_id ? 'OK' : 'MISSING'})`
+        },
         { status: 400, headers: corsHeaders }
       );
     }
 
-    // 3. Simultaneously capture both PaymentIntents in Stripe
+    // Simultaneously capture both PaymentIntents in Stripe
     await Promise.all([
       stripe.paymentIntents.capture(host_payment_intent_id),
       stripe.paymentIntents.capture(partner_payment_intent_id),
     ]);
 
-    // 4. Update status in Supabase to MATCHED
+    // Update status in Supabase to MATCHED
     await supabase
       .from('lobbies')
       .update({ status: 'MATCHED' })
