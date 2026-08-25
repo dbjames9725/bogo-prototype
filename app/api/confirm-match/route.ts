@@ -23,32 +23,16 @@ export async function POST(req: Request) {
       );
     }
 
-    // Retry loop: Query database up to 3 times to allow pending writes to settle
-    let lobby = null;
-    for (let i = 0; i < 3; i++) {
-      const { data, error } = await supabase
-        .from('lobbies')
-        .select('*')
-        .eq('id', lobbyId)
-        .single();
+    // 1. Fetch current lobby record
+    const { data: lobby, error } = await supabase
+      .from('lobbies')
+      .select('*')
+      .eq('id', lobbyId)
+      .single();
 
-      if (data && data.host_payment_intent_id && data.partner_payment_intent_id) {
-        lobby = data;
-        break;
-      }
-
-      if (data && data.status === 'MATCHED') {
-        return NextResponse.json({ success: true, status: 'MATCHED' }, { headers: corsHeaders });
-      }
-
-      // Wait 500ms before retrying
-      await new Promise((res) => setTimeout(res, 500));
-      lobby = data;
-    }
-
-    if (!lobby) {
+    if (error || !lobby) {
       return NextResponse.json(
-        { error: 'Lobby not found' },
+        { error: 'Lobby record not found' },
         { status: 404, headers: corsHeaders }
       );
     }
@@ -57,24 +41,38 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, status: 'MATCHED' }, { headers: corsHeaders });
     }
 
-    const { host_payment_intent_id, partner_payment_intent_id } = lobby;
+    let hostHoldId = lobby.host_payment_intent_id;
+    let partnerHoldId = lobby.partner_payment_intent_id;
 
-    if (!host_payment_intent_id || !partner_payment_intent_id) {
+    // Fallback: If Host hold ID is missing in Supabase, search Stripe PaymentIntents by lobbyId metadata
+    if (!hostHoldId) {
+      const searchResults = await stripe.paymentIntents.search({
+        query: `metadata['lobbyId']:'${lobbyId}' AND metadata['role']:'HOST'`,
+      });
+
+      if (searchResults.data.length > 0) {
+        hostHoldId = searchResults.data[0].id;
+        // Repair database record asynchronously
+        await supabase.from('lobbies').update({ host_payment_intent_id: hostHoldId }).eq('id', lobbyId);
+      }
+    }
+
+    if (!hostHoldId || !partnerHoldId) {
       return NextResponse.json(
         {
-          error: `Missing hold: Host (${host_payment_intent_id ? 'OK' : 'MISSING'}), Partner (${partner_payment_intent_id ? 'OK' : 'MISSING'})`
+          error: `Missing hold: Host (${hostHoldId ? 'OK' : 'MISSING'}), Partner (${partnerHoldId ? 'OK' : 'MISSING'})`,
         },
         { status: 400, headers: corsHeaders }
       );
     }
 
-    // Simultaneously capture both PaymentIntents in Stripe
+    // 2. Capture both PaymentIntents simultaneously in Stripe
     await Promise.all([
-      stripe.paymentIntents.capture(host_payment_intent_id),
-      stripe.paymentIntents.capture(partner_payment_intent_id),
+      stripe.paymentIntents.capture(hostHoldId),
+      stripe.paymentIntents.capture(partnerHoldId),
     ]);
 
-    // Update status in Supabase to MATCHED
+    // 3. Mark lobby as MATCHED
     await supabase
       .from('lobbies')
       .update({ status: 'MATCHED' })
@@ -85,9 +83,9 @@ export async function POST(req: Request) {
       { headers: corsHeaders }
     );
   } catch (err: any) {
-    console.error('Confirm match capture failure:', err.message);
+    console.error('Confirm Match Capture Error:', err.message);
     return NextResponse.json(
-      { error: err.message || 'Failed capturing dual payments' },
+      { error: err.message || 'Failed capturing payment holds' },
       { status: 500, headers: corsHeaders }
     );
   }
