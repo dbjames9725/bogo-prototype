@@ -57,7 +57,6 @@
       btn.style.opacity = '0.75';
       btn.innerText = 'Creating BOGO Lobby...';
 
-      // Automatically capture selected variants (Size/Color) from merchant dropdowns
       const selectedVariant = {};
       const selectElements = document.querySelectorAll('select, input[type="radio"]:checked');
       selectElements.forEach((el) => {
@@ -83,6 +82,8 @@
         const data = await response.json();
 
         if (data.lobbyId) {
+          // Tag local storage BEFORE redirecting so the lobby page knows this tab is HOST
+          localStorage.setItem(`hosted_${data.lobbyId}`, 'true');
           window.location.href = `${BOGO_APP_URL}/lobby/${data.lobbyId}`;
         } else {
           alert('Could not start lobby: ' + (data.error || 'Unknown error'));

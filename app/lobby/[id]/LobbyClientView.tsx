@@ -5,7 +5,6 @@ import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { supabase } from '@/lib/supabase';
 
-// Initialize Stripe JS Client SDK
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 
 export interface AddressData {
@@ -43,9 +42,6 @@ interface CheckoutFormProps {
   onSuccess: () => void;
 }
 
-// ----------------------------------------------------------------------
-// CheckoutForm Sub-Component: Handles Address & Stripe Hold Submission
-// ----------------------------------------------------------------------
 function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
   const stripe = useStripe();
   const elements = useElements();
@@ -72,7 +68,6 @@ function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
     setErrorMessage('');
 
     try {
-      // 1. Authorize card pre-authorization hold with Stripe
       const { error, paymentIntent } = await stripe.confirmPayment({
         elements,
         confirmParams: {
@@ -91,7 +86,6 @@ function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
         const isHost = role === 'HOST';
         const addressData: AddressData = { name, street1: street, city, state, zip, phone };
 
-        // 2. Write role-specific Payment Intent ID and Shipping Address to Supabase
         const updateData = isHost
           ? { host_payment_intent_id: paymentIntent.id, user_a_address: addressData }
           : { partner_payment_intent_id: paymentIntent.id, user_b_address: addressData };
@@ -105,12 +99,11 @@ function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
           throw new Error('Failed updating database with payment intent: ' + dbError.message);
         }
 
-        // Tag local browser as Host owner if applicable
         if (isHost && typeof window !== 'undefined') {
           localStorage.setItem(`hosted_${lobbyId}`, 'true');
         }
 
-        // 3. Trigger Dual Capture endpoint if Partner completes authorization
+        // Trigger Dual Capture only when Partner completes checkout
         if (!isHost) {
           const confirmRes = await fetch('/api/confirm-match', {
             method: 'POST',
@@ -125,7 +118,6 @@ function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
           }
         }
 
-        // Refresh parent lobby state
         onSuccess();
       } else {
         setErrorMessage('Unexpected payment status. Please try submitting again.');
@@ -140,7 +132,6 @@ function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Shipping Address Inputs */}
       <div className="bg-gray-50 p-4 rounded-xl space-y-3 border border-gray-200">
         <h4 className="text-xs font-bold uppercase text-gray-500 tracking-wider">
           Shipping & Billing Address
@@ -215,7 +206,6 @@ function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
         </div>
       </div>
 
-      {/* Stripe Payment Element Component */}
       <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
         <h4 className="text-xs font-bold uppercase text-gray-500 tracking-wider mb-3">
           Payment Method
@@ -223,14 +213,12 @@ function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
         <PaymentElement />
       </div>
 
-      {/* Error Alert Box */}
       {errorMessage && (
         <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-lg font-semibold">
           ⚠️ {errorMessage}
         </div>
       )}
 
-      {/* Submit Action Button */}
       <button
         type="submit"
         disabled={!stripe || loading}
@@ -244,9 +232,6 @@ function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
   );
 }
 
-// ----------------------------------------------------------------------
-// Main LobbyClientView Page Controller
-// ----------------------------------------------------------------------
 export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const [lobby, setLobby] = useState<LobbyData | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
@@ -264,7 +249,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
         .single();
 
       if (error || !data) {
-        console.error('Error fetching lobby record:', error);
         setFetchError('Lobby record not found in database.');
         setLoading(false);
         return;
@@ -272,18 +256,15 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
 
       setLobby(data);
 
-      // Determine local browser ownership role
-      const isHost =
-        typeof window !== 'undefined' && localStorage.getItem(`hosted_${lobbyId}`) === 'true';
+      const isHost = typeof window !== 'undefined' && localStorage.getItem(`hosted_${lobbyId}`) === 'true';
       const currentRole = isHost ? 'HOST' : 'PARTNER';
       setRole(currentRole);
 
-      // Explicitly check payment completion for THIS specific role
       const hasHostPaid = !!data.host_payment_intent_id;
       const hasPartnerPaid = !!data.partner_payment_intent_id;
       const hasUserPaidForRole = isHost ? hasHostPaid : hasPartnerPaid;
 
-      // Only request a Payment Intent if THIS user role has not paid yet AND the deal isn't matched
+      // Request Payment Intent clientSecret ONLY if this user role has not completed their hold
       if (!hasUserPaidForRole && data.status !== 'MATCHED') {
         const res = await fetch('/api/create-payment-intent', {
           method: 'POST',
@@ -296,11 +277,11 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
         if (intentData.clientSecret) {
           setClientSecret(intentData.clientSecret);
         } else if (intentData.error) {
-          console.error('Create PaymentIntent Server Error:', intentData.error);
+          console.error('Create PaymentIntent Error:', intentData.error);
         }
       }
     } catch (err: any) {
-      console.error('Lobby Fetching Logic Error:', err);
+      console.error('Lobby Fetching Error:', err);
       setFetchError('Unexpected error loading lobby details.');
     } finally {
       setLoading(false);
@@ -310,7 +291,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   useEffect(() => {
     fetchLobby();
 
-    // Subscribe to real-time changes on this specific lobby record
     const channel = supabase
       .channel(`lobby_${lobbyId}`)
       .on(
@@ -358,7 +338,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     );
   }
 
-  // Authoritative financial calculations
   const itemPrice = lobby.item_price || 0;
   const baseShare = itemPrice / 2;
   const platformFee = itemPrice * 0.025;
@@ -368,12 +347,13 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const isHost = role === 'HOST';
   const hasHostPaid = !!lobby.host_payment_intent_id;
   const hasPartnerPaid = !!lobby.partner_payment_intent_id;
-  const isMatched = lobby.status === 'MATCHED';
+ 
+  // Real MATCH condition: BOTH holds must exist AND database status must be MATCHED
+  const isMatched = lobby.status === 'MATCHED' && hasHostPaid && hasPartnerPaid;
 
   return (
     <div className="min-h-screen bg-gray-100 py-8 px-4 font-sans text-gray-900">
       <div className="max-w-xl mx-auto space-y-6">
-        {/* Role Header Banner */}
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 flex items-center justify-between">
           <div>
             <span className="text-xs font-extrabold uppercase tracking-wider text-blue-600 bg-blue-50 px-2.5 py-1 rounded-md">
@@ -387,7 +367,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           </div>
         </div>
 
-        {/* Status Display Card */}
         {isMatched ? (
           <div className="bg-emerald-600 text-white p-6 rounded-3xl shadow-lg space-y-2 text-center">
             <div className="text-4xl">🎉</div>
@@ -426,7 +405,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           </div>
         )}
 
-        {/* Host Invite Link Container */}
+        {/* Invite Link displayed ONLY to Host after Host completes payment */}
         {isHost && hasHostPaid && !isMatched && (
           <div className="bg-blue-50 border border-blue-200 p-6 rounded-3xl space-y-3">
             <div className="flex items-center gap-2 text-blue-900 font-bold text-sm">
@@ -444,7 +423,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           </div>
         )}
 
-        {/* Active Checkout Container */}
         {!isMatched && (
           <div className="bg-white p-6 rounded-3xl shadow-md border border-gray-200 space-y-4">
             {(isHost && !hasHostPaid) || (!isHost && !hasPartnerPaid) ? (
