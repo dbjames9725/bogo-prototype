@@ -18,7 +18,7 @@ export async function POST(req: Request) {
 
     if (!lobbyId) {
       return NextResponse.json(
-        { error: 'Missing lobbyId' },
+        { error: 'Missing lobbyId parameter' },
         { status: 400, headers: corsHeaders }
       );
     }
@@ -32,47 +32,46 @@ export async function POST(req: Request) {
 
     if (error || !lobby) {
       return NextResponse.json(
-        { error: 'Lobby record not found' },
+        { error: 'Lobby not found' },
         { status: 404, headers: corsHeaders }
       );
     }
 
+    // If already marked MATCHED in Supabase, return success immediately
     if (lobby.status === 'MATCHED') {
       return NextResponse.json({ success: true, status: 'MATCHED' }, { headers: corsHeaders });
     }
 
-    let hostHoldId = lobby.host_payment_intent_id;
-    let partnerHoldId = lobby.partner_payment_intent_id;
+    const { host_payment_intent_id, partner_payment_intent_id } = lobby;
 
-    // Fallback: If Host hold ID is missing in Supabase, search Stripe PaymentIntents by lobbyId metadata
-    if (!hostHoldId) {
-      const searchResults = await stripe.paymentIntents.search({
-        query: `metadata['lobbyId']:'${lobbyId}' AND metadata['role']:'HOST'`,
-      });
-
-      if (searchResults.data.length > 0) {
-        hostHoldId = searchResults.data[0].id;
-        // Repair database record asynchronously
-        await supabase.from('lobbies').update({ host_payment_intent_id: hostHoldId }).eq('id', lobbyId);
-      }
-    }
-
-    if (!hostHoldId || !partnerHoldId) {
+    if (!host_payment_intent_id || !partner_payment_intent_id) {
       return NextResponse.json(
-        {
-          error: `Missing hold: Host (${hostHoldId ? 'OK' : 'MISSING'}), Partner (${partnerHoldId ? 'OK' : 'MISSING'})`,
-        },
+        { error: 'Both payment holds are required before confirming match' },
         { status: 400, headers: corsHeaders }
       );
     }
 
-    // 2. Capture both PaymentIntents simultaneously in Stripe
+    // 2. Safely capture each hold independently, ignoring "already captured" responses
+    const captureIntentSafely = async (intentId: string) => {
+      try {
+        const intent = await stripe.paymentIntents.retrieve(intentId);
+        if (intent.status === 'requires_capture') {
+          await stripe.paymentIntents.capture(intentId);
+        }
+      } catch (err: any) {
+        // If captured by Stripe Webhook concurrently, ignore the error
+        if (!err.message?.includes('already been captured')) {
+          throw err;
+        }
+      }
+    };
+
     await Promise.all([
-      stripe.paymentIntents.capture(hostHoldId),
-      stripe.paymentIntents.capture(partnerHoldId),
+      captureIntentSafely(host_payment_intent_id),
+      captureIntentSafely(partner_payment_intent_id),
     ]);
 
-    // 3. Mark lobby as MATCHED
+    // 3. Update Supabase lobby status to MATCHED
     await supabase
       .from('lobbies')
       .update({ status: 'MATCHED' })
@@ -83,9 +82,9 @@ export async function POST(req: Request) {
       { headers: corsHeaders }
     );
   } catch (err: any) {
-    console.error('Confirm Match Capture Error:', err.message);
+    console.error('Confirm match error:', err.message);
     return NextResponse.json(
-      { error: err.message || 'Failed capturing payment holds' },
+      { error: err.message || 'Failed processing match confirmation' },
       { status: 500, headers: corsHeaders }
     );
   }
