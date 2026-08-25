@@ -5,7 +5,7 @@ import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { supabase } from '@/lib/supabase';
 
-// Initialize Stripe JS
+// Initialize Stripe JS Client SDK
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 
 export interface AddressData {
@@ -91,7 +91,7 @@ function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
         const isHost = role === 'HOST';
         const addressData: AddressData = { name, street1: street, city, state, zip, phone };
 
-        // 2. Explicitly write Payment Intent ID and Shipping Address to Supabase
+        // 2. Write role-specific Payment Intent ID and Shipping Address to Supabase
         const updateData = isHost
           ? { host_payment_intent_id: paymentIntent.id, user_a_address: addressData }
           : { partner_payment_intent_id: paymentIntent.id, user_b_address: addressData };
@@ -105,7 +105,7 @@ function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
           throw new Error('Failed updating database with payment intent: ' + dbError.message);
         }
 
-        // Tag local browser as Host owner
+        // Tag local browser as Host owner if applicable
         if (isHost && typeof window !== 'undefined') {
           localStorage.setItem(`hosted_${lobbyId}`, 'true');
         }
@@ -278,10 +278,13 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
       const currentRole = isHost ? 'HOST' : 'PARTNER';
       setRole(currentRole);
 
-      const hasPaid = isHost ? !!data.host_payment_intent_id : !!data.partner_payment_intent_id;
+      // Explicitly check payment completion for THIS specific role
+      const hasHostPaid = !!data.host_payment_intent_id;
+      const hasPartnerPaid = !!data.partner_payment_intent_id;
+      const hasUserPaidForRole = isHost ? hasHostPaid : hasPartnerPaid;
 
-      // Initialize Payment Intent if user hasn't authorized payment yet
-      if (!hasPaid && data.status !== 'MATCHED') {
+      // Only request a Payment Intent if THIS user role has not paid yet AND the deal isn't matched
+      if (!hasUserPaidForRole && data.status !== 'MATCHED') {
         const res = await fetch('/api/create-payment-intent', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -290,16 +293,8 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
 
         const intentData = await res.json();
 
-        if (intentData.clientSecret && intentData.paymentIntentId) {
+        if (intentData.clientSecret) {
           setClientSecret(intentData.clientSecret);
-
-          // Save intent ID back to Supabase to establish database pairing link
-          const updateCol =
-            currentRole === 'HOST'
-              ? { host_payment_intent_id: intentData.paymentIntentId }
-              : { partner_payment_intent_id: intentData.paymentIntentId };
-
-          await supabase.from('lobbies').update(updateCol).eq('id', lobbyId);
         } else if (intentData.error) {
           console.error('Create PaymentIntent Server Error:', intentData.error);
         }
