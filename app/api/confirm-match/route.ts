@@ -18,12 +18,12 @@ export async function POST(req: Request) {
 
     if (!lobbyId) {
       return NextResponse.json(
-        { error: 'Missing lobbyId parameter' },
+        { error: 'Missing lobbyId' },
         { status: 400, headers: corsHeaders }
       );
     }
 
-    // 1. Fetch current lobby state from Supabase
+    // 1. Retrieve full lobby details from Supabase
     const { data: lobby, error } = await supabase
       .from('lobbies')
       .select('*')
@@ -37,49 +37,40 @@ export async function POST(req: Request) {
       );
     }
 
-    // If already matched, exit gracefully
+    // 2. Return success if already matched
     if (lobby.status === 'MATCHED') {
-      return NextResponse.json(
-        { success: true, message: 'Already matched' },
-        { headers: corsHeaders }
-      );
+      return NextResponse.json({ success: true, status: 'MATCHED' }, { headers: corsHeaders });
     }
 
     const { host_payment_intent_id, partner_payment_intent_id } = lobby;
 
     if (!host_payment_intent_id || !partner_payment_intent_id) {
       return NextResponse.json(
-        { error: 'Both payment holds are required before confirming match' },
+        { error: 'Cannot capture: Missing Host or Partner payment hold' },
         { status: 400, headers: corsHeaders }
       );
     }
 
-    // 2. Capture both Stripe holds simultaneously
-    console.log(`Capturing holds for Lobby ${lobbyId}: Host (${host_payment_intent_id}), Partner (${partner_payment_intent_id})`);
-
+    // 3. Simultaneously capture both PaymentIntents in Stripe
     await Promise.all([
       stripe.paymentIntents.capture(host_payment_intent_id),
       stripe.paymentIntents.capture(partner_payment_intent_id),
     ]);
 
-    // 3. Update Supabase lobby status to MATCHED
-    const { error: updateError } = await supabase
+    // 4. Update status in Supabase to MATCHED
+    await supabase
       .from('lobbies')
       .update({ status: 'MATCHED' })
       .eq('id', lobbyId);
-
-    if (updateError) {
-      console.error('Failed to update lobby status to MATCHED:', updateError);
-    }
 
     return NextResponse.json(
       { success: true, status: 'MATCHED' },
       { headers: corsHeaders }
     );
   } catch (err: any) {
-    console.error('Confirm Match Capture Error:', err.message);
+    console.error('Confirm match capture failure:', err.message);
     return NextResponse.json(
-      { error: err.message || 'Failed to capture payment holds' },
+      { error: err.message || 'Failed capturing dual payments' },
       { status: 500, headers: corsHeaders }
     );
   }

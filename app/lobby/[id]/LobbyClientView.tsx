@@ -1,12 +1,30 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import React, { useState, useEffect } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import { supabase } from '@/lib/supabase';
 
-const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '');
+const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 
+interface LobbyData {
+  id: string;
+  item_name: string;
+  item_price: number;
+  total_price: number;
+  deal_type: string;
+  user_a_share: number;
+  user_b_share: number;
+  host_share?: number;
+  partner_share?: number;
+  status: string;
+  host_payment_intent_id?: string;
+  partner_payment_intent_id?: string;
+  user_a_variant?: any;
+  user_b_variant?: any;
+}
+
+// Inner Form Component handling card authorization & instant dual-capture
 function CheckoutForm({
   lobbyId,
   role,
@@ -18,8 +36,6 @@ function CheckoutForm({
 }) {
   const stripe = useStripe();
   const elements = useElements();
-  const [loading, setLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
 
   const [name, setName] = useState('');
   const [street, setStreet] = useState('');
@@ -28,268 +44,221 @@ function CheckoutForm({
   const [zip, setZip] = useState('');
   const [phone, setPhone] = useState('');
 
-  async function handleSubmit(e: React.FormEvent) {
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
     if (!stripe || !elements) return;
 
     setLoading(true);
     setErrorMessage('');
 
-    // Submit Stripe Payment Element
-    const { error: submitError } = await elements.submit();
-    if (submitError) {
-      setErrorMessage(submitError.message || 'Please check your payment details.');
-      setLoading(false);
-      return;
-    }
+    try {
+      // 1. Confirm Payment Hold with Stripe
+      const { error, paymentIntent } = await stripe.confirmPayment({
+        elements,
+        confirmParams: {
+          return_url: window.location.href,
+        },
+        redirect: 'if_required',
+      });
 
-    // Confirm Pre-Auth Hold
-    const { error: confirmError, paymentIntent } = await stripe.confirmPayment({
-      elements,
-      confirmParams: {
-        return_url: window.location.href,
-      },
-      redirect: 'if_required',
-    });
-
-    if (confirmError) {
-      setErrorMessage(confirmError.message || 'Payment authorization failed.');
-      setLoading(false);
-      return;
-    }
-
-    if (paymentIntent && paymentIntent.status === 'requires_capture') {
-      const isHost = role === 'HOST';
-      const addressData = { name, street1: street, city, state, zip, phone };
-
-      const updateData = isHost
-        ? { host_payment_intent_id: paymentIntent.id, user_a_address: addressData }
-        : { partner_payment_intent_id: paymentIntent.id, user_b_address: addressData };
-
-      // 1. Update Supabase with verified hold ID
-      await supabase.from('lobbies').update(updateData).eq('id', lobbyId);
-
-      // 2. Set LocalStorage Flag
-      if (isHost && typeof window !== 'undefined') {
-        localStorage.setItem(`hosted_${lobbyId}`, 'true');
+      if (error) {
+        setErrorMessage(error.message || 'Payment authorization failed');
+        setLoading(false);
+        return;
       }
 
-      // 3. If Partner completes authorization, trigger simultaneous dual capture
-      if (!isHost) {
-        await fetch('/api/confirm-match', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ lobbyId }),
-        });
+      if (paymentIntent && (paymentIntent.status === 'requires_capture' || paymentIntent.status === 'succeeded')) {
+        const isHost = role === 'HOST';
+        const addressData = { name, street1: street, city, state, zip, phone };
+
+        // 2. Persist Payment Intent ID and Shipping Address to Supabase
+        const updateData = isHost
+          ? { host_payment_intent_id: paymentIntent.id, user_a_address: addressData }
+          : { partner_payment_intent_id: paymentIntent.id, user_b_address: addressData };
+
+        const { error: dbError } = await supabase
+          .from('lobbies')
+          .update(updateData)
+          .eq('id', lobbyId);
+
+        if (dbError) {
+          throw new Error('Failed to update lobby details in database: ' + dbError.message);
+        }
+
+        if (isHost && typeof window !== 'undefined') {
+          localStorage.setItem(`hosted_${lobbyId}`, 'true');
+        }
+
+        // 3. Trigger Dual Capture immediately when Partner completes authorization
+        if (!isHost) {
+          const confirmRes = await fetch('/api/confirm-match', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lobbyId }),
+          });
+
+          const confirmData = await confirmRes.json();
+
+          if (!confirmRes.ok) {
+            throw new Error(confirmData.error || 'Failed to capture matched payments');
+          }
+        }
+
+        // 4. Reload view state
+        onSuccess();
       }
-
-      onSuccess();
+    } catch (err: any) {
+      console.error('Checkout error:', err);
+      setErrorMessage(err.message || 'An unexpected error occurred during checkout');
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
-  }
-
-  const isPartner = role === 'PARTNER';
+  };
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className={`space-y-4 p-5 sm:p-6 rounded-2xl border ${
-        isPartner ? 'bg-emerald-50/60 border-emerald-200' : 'bg-blue-50/60 border-blue-200'
-      }`}
-    >
-      <div className="flex items-center justify-between">
-        <div
-          className={`px-3 py-1 rounded-md text-xs font-bold uppercase tracking-wider ${
-            isPartner ? 'bg-emerald-600 text-white' : 'bg-blue-600 text-white'
-          }`}
-        >
-          {isPartner ? '🤝 Partner Checkout' : '👑 Host Setup Step 1'}
-        </div>
-        <span className="text-xs font-semibold text-gray-500">Secure Stripe Hold</span>
-      </div>
-
-      <div>
-        <h3 className="font-bold text-gray-900 text-lg">
-          {isPartner
-            ? 'Join Deal & Authorize Your Split Share'
-            : 'Authorize Host Payment Hold & Enter Shipping Address'}
-        </h3>
-        <p className="text-xs text-gray-600 mt-1">
-          {isPartner
-            ? 'Your card will only be charged when the split is fully confirmed.'
-            : 'Funds are placed on hold. Your card is only charged once a partner joins.'}
-        </p>
-      </div>
-
-      <div className="space-y-3 pt-1">
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="bg-gray-50 p-4 rounded-xl space-y-3 border border-gray-200">
+        <h4 className="text-xs font-bold uppercase text-gray-500 tracking-wider">Shipping & Billing Address</h4>
         <input
           type="text"
-          required
           placeholder="Full Name"
+          required
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full p-2.5 text-sm border rounded-lg bg-white"
         />
         <input
           type="text"
-          required
           placeholder="Street Address"
+          required
           value={street}
           onChange={(e) => setStreet(e.target.value)}
-          className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full p-2.5 text-sm border rounded-lg bg-white"
         />
         <div className="grid grid-cols-3 gap-2">
           <input
             type="text"
-            required
             placeholder="City"
+            required
             value={city}
             onChange={(e) => setCity(e.target.value)}
-            className="px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="p-2.5 text-sm border rounded-lg bg-white"
           />
           <input
             type="text"
+            placeholder="State"
             required
-            placeholder="State (e.g. CA)"
             value={state}
-            onChange={(e) => setState(e.target.value.toUpperCase())}
-            className="px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase"
+            onChange={(e) => setState(e.target.value)}
+            className="p-2.5 text-sm border rounded-lg bg-white"
           />
           <input
             type="text"
-            required
             placeholder="ZIP Code"
+            required
             value={zip}
             onChange={(e) => setZip(e.target.value)}
-            className="px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="p-2.5 text-sm border rounded-lg bg-white"
           />
         </div>
         <input
           type="tel"
-          placeholder="Phone Number (for shipping updates)"
+          placeholder="Phone Number"
+          required
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
-          className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full p-2.5 text-sm border rounded-lg bg-white"
         />
       </div>
 
-      <div className="pt-2">
-        <PaymentElement options={{ layout: 'tabs' }} />
+      <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+        <h4 className="text-xs font-bold uppercase text-gray-500 tracking-wider mb-3">Payment Method</h4>
+        <PaymentElement />
       </div>
 
       {errorMessage && (
-        <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs font-semibold">
-          {errorMessage}
+        <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-lg font-semibold">
+          ⚠️ {errorMessage}
         </div>
       )}
 
       <button
         type="submit"
         disabled={!stripe || loading}
-        className={`w-full text-white font-bold py-3.5 px-4 rounded-xl shadow transition text-sm flex items-center justify-center gap-2 ${
-          isPartner ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'
-        }`}
+        className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-lg transition disabled:opacity-50 text-base"
       >
-        {loading
-          ? 'Processing Pre-Auth Hold...'
-          : `Authorize Payment (${isPartner ? 'Partner Share' : 'Host Share'})`}
+        {loading ? 'Authorizing Hold...' : `Authorize Payment (${role === 'HOST' ? 'Host' : 'Partner'} Share)`}
       </button>
     </form>
   );
 }
 
-export default function LobbyClientView({
-  lobbyId,
-  initialLobby,
-}: {
-  lobbyId: string;
-  initialLobby: any;
-}) {
-  const [lobby, setLobby] = useState<any>(initialLobby);
+// Main Lobby Client View Container
+export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
+  const [lobby, setLobby] = useState<LobbyData | null>(null);
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [role, setRole] = useState<'HOST' | 'PARTNER'>('PARTNER');
   const [copied, setCopied] = useState(false);
-  const [clientSecret, setClientSecret] = useState('');
-  const [loadingSecret, setLoadingSecret] = useState(true);
-  const [apiError, setApiError] = useState('');
-  const [isHostUser, setIsHostUser] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const shareableUrl = typeof window !== 'undefined' ? `${window.location.origin}/lobby/${lobbyId}` : '';
+  // Fetch initial lobby status and set up real-time listener
+  const fetchLobby = async () => {
+    const { data, error } = await supabase
+      .from('lobbies')
+      .select('*')
+      .eq('id', lobbyId)
+      .single();
 
-  // Financial Fee Calculations
-  const originalPrice = lobby?.item_price || 0;
-  const baseShare = originalPrice / 2;
-  const platformFee = originalPrice * 0.025; // 2.5% Platform Fee
-  const stripeFee = baseShare * 0.029 + 0.30; // Stripe Processing Fee
-  const totalShareWithFees = baseShare + platformFee + stripeFee;
-
-  useEffect(() => {
-    // Determine host status from LocalStorage or Host Hold ID
-    if (typeof window !== 'undefined') {
-      const hostedFlag = localStorage.getItem(`hosted_${lobbyId}`);
-      if (hostedFlag === 'true' || !lobby?.host_payment_intent_id) {
-        setIsHostUser(true);
-      } else {
-        setIsHostUser(false);
-      }
+    if (error || !data) {
+      console.error('Error fetching lobby:', error);
+      setLoading(false);
+      return;
     }
 
-    async function setupPaymentIntent() {
-      if (!lobby) return;
+    setLobby(data);
 
-      // If lobby is already matched, stop
-      if (lobby.status === 'MATCHED') {
-        setLoadingSecret(false);
-        return;
-      }
+    // Determine Role: Host if created in this browser, else Partner
+    const isHost = typeof window !== 'undefined' && localStorage.getItem(`hosted_${lobbyId}`) === 'true';
+    const currentRole = isHost ? 'HOST' : 'PARTNER';
+    setRole(currentRole);
 
-      // Prevent generating multiple client secrets if one is already loaded
-      if (clientSecret) {
-        setLoadingSecret(false);
-        return;
-      }
+    // If active user has not submitted payment hold yet, fetch payment intent client secret
+    const hasPaid = isHost ? !!data.host_payment_intent_id : !!data.partner_payment_intent_id;
 
-      const isHostPending = !lobby.host_payment_intent_id;
-      const role = isHostPending ? 'HOST' : 'PARTNER';
-
-      // If Host has already authorized hold and this is Host viewing, no need for new payment intent
-      if (isHostUser && !isHostPending) {
-        setLoadingSecret(false);
-        return;
-      }
-
+    if (!hasPaid && data.status !== 'MATCHED') {
       try {
         const res = await fetch('/api/create-payment-intent', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            amount: totalShareWithFees,
-            lobbyId,
-            role,
-          }),
+          body: JSON.stringify({ lobbyId, role: currentRole }),
         });
         const intentData = await res.json();
         if (intentData.clientSecret) {
           setClientSecret(intentData.clientSecret);
-        } else if (intentData.error) {
-          setApiError(intentData.error);
         }
-      } catch (err: any) {
-        console.error('Payment intent initialization failed:', err);
-        setApiError(err.message || 'Failed to initialize Stripe Payment Intent.');
-      } finally {
-        setLoadingSecret(false);
+      } catch (err) {
+        console.error('Failed creating PaymentIntent:', err);
       }
     }
 
-    setupPaymentIntent();
+    setLoading(false);
+  };
 
+  useEffect(() => {
+    fetchLobby();
+
+    // Subscribe to Supabase Real-Time Updates
     const channel = supabase
-      .channel(`lobby-${lobbyId}`)
+      .channel(`lobby_${lobbyId}`)
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'lobbies', filter: `id=eq.${lobbyId}` },
         (payload) => {
-          setLobby(payload.new);
+          setLobby(payload.new as LobbyData);
         }
       )
       .subscribe();
@@ -297,215 +266,143 @@ export default function LobbyClientView({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [lobbyId, lobby?.id, lobby?.host_payment_intent_id, clientSecret, isHostUser]);
+  }, [lobbyId]);
 
-  const copyToClipboard = () => {
-    if (shareableUrl) {
-      navigator.clipboard.writeText(shareableUrl);
+  const copyInviteLink = () => {
+    if (typeof window !== 'undefined') {
+      navigator.clipboard.writeText(window.location.href);
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     }
   };
 
-  if (!lobby) {
+  if (loading || !lobby) {
     return (
-      <div className="max-w-md mx-auto my-12 p-6 bg-white rounded-2xl shadow border text-center space-y-3">
-        <h2 className="text-xl font-bold text-red-600">Lobby Not Found</h2>
-        <p className="text-sm text-gray-600">This deal lobby may have expired or does not exist.</p>
-        <a href="/" className="inline-block bg-blue-600 text-white text-xs font-bold px-4 py-2 rounded-lg">
-          Back to Homepage
-        </a>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-500 font-sans">
+        <div className="flex items-center gap-3 bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+          <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+          <span className="font-semibold text-sm">Loading BOGO Split Lobby...</span>
+        </div>
       </div>
     );
   }
 
-  const isHostPendingHold = !lobby.host_payment_intent_id;
-  const isPartnerPendingHold = lobby.host_payment_intent_id && !lobby.partner_payment_intent_id;
+  // Calculations
+  const itemPrice = lobby.item_price || 0;
+  const baseShare = itemPrice / 2;
+  const platformFee = itemPrice * 0.025;
+  const stripeFee = baseShare * 0.029 + 0.30;
+  const totalShare = baseShare + platformFee + stripeFee;
+
+  const isHost = role === 'HOST';
+  const hasHostPaid = !!lobby.host_payment_intent_id;
+  const hasPartnerPaid = !!lobby.partner_payment_intent_id;
+  const isMatched = lobby.status === 'MATCHED';
 
   return (
-    <div className="max-w-2xl mx-auto p-4 sm:p-6 bg-white rounded-2xl shadow-sm border border-gray-200 space-y-6">
-      {/* Header View Badge */}
-      <div className="flex justify-between items-start pb-4 border-b border-gray-100">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span
-              className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
-                isHostUser ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'
-              }`}
-            >
-              {isHostUser ? '👑 HOST DASHBOARD' : '🤝 PARTNER DEAL INVITATION'}
+    <div className="min-h-screen bg-gray-100 py-8 px-4 font-sans text-gray-900">
+      <div className="max-w-xl mx-auto space-y-6">
+        {/* Role Header */}
+        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 flex items-center justify-between">
+          <div>
+            <span className="text-xs font-extrabold uppercase tracking-wider text-blue-600 bg-blue-50 px-2.5 py-1 rounded-md">
+              {isHost ? '👑 HOST DASHBOARD' : '🤝 PARTNER DEAL INVITATION'}
             </span>
+            <h2 className="text-xl font-extrabold mt-2">{lobby.item_name}</h2>
           </div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{lobby.item_name}</h1>
-          <p className="text-xs text-gray-500 mt-0.5">
-            Lobby ID: <span className="font-mono">{lobbyId}</span>
-          </p>
-        </div>
-
-        <span
-          className={`px-3 py-1 text-xs font-bold rounded-full ${
-            lobby.status === 'MATCHED'
-              ? 'bg-green-100 text-green-800 border border-green-300'
-              : 'bg-amber-100 text-amber-800 border border-amber-300'
-          }`}
-        >
-          {lobby.status === 'MATCHED' ? '🎉 MATCH CONFIRMED' : '⏳ Awaiting Partner'}
-        </span>
-      </div>
-
-      {/* Cost Breakdown */}
-      <div
-        className={`rounded-2xl p-5 space-y-3 text-sm ${
-          !isHostUser
-            ? 'bg-emerald-50/70 border border-emerald-200/80 text-emerald-950'
-            : 'bg-gray-50 border border-gray-200/70 text-gray-700'
-        }`}
-      >
-        <div className="flex justify-between items-center">
-          <span>Deal Promotion:</span>
-          <span className="font-bold text-gray-900">
-            {lobby.deal_type === 'BOGO_50' ? 'Buy 1 Get 1 50% OFF' : 'Buy 1 Get 1 FREE'}
-          </span>
-        </div>
-        <div className="flex justify-between items-center">
-          <span>Original BOGO Item Price:</span>
-          <span className="font-bold text-gray-900">${originalPrice.toFixed(2)}</span>
-        </div>
-
-        {/* Fee Breakdown */}
-        <div className="pt-2 border-t border-gray-200/80 space-y-1.5 text-xs text-gray-600">
-          <div className="flex justify-between">
-            <span>50/50 Base Split Share:</span>
-            <span className="font-semibold text-gray-900">${baseShare.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between text-blue-700 font-medium">
-            <span>BOGO Split Platform Fee (2.5%):</span>
-            <span className="font-semibold">+${platformFee.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between text-gray-600">
-            <span>Stripe Processing Fee (2.9% + $0.30):</span>
-            <span className="font-semibold">+${stripeFee.toFixed(2)}</span>
+          <div className="text-right">
+            <span className="text-xs text-gray-400 block font-semibold">Deal Type</span>
+            <span className="text-sm font-bold text-gray-700">{lobby.deal_type}</span>
           </div>
         </div>
 
-        <div className="pt-2 border-t border-gray-200/80 grid grid-cols-2 gap-3">
-          <div className="bg-white/80 p-3 rounded-xl border border-gray-200/50">
-            <span className="text-[10px] font-bold uppercase text-blue-600 block">Host Share (Total)</span>
-            <span className="text-lg font-black text-blue-900">${totalShareWithFees.toFixed(2)}</span>
+        {/* Status Card */}
+        {isMatched ? (
+          <div className="bg-emerald-600 text-white p-6 rounded-3xl shadow-lg space-y-2 text-center">
+            <div className="text-4xl">🎉</div>
+            <h3 className="text-2xl font-black">MATCH CONFIRMED & PAYMENTS CAPTURED!</h3>
+            <p className="text-xs text-emerald-100">
+              Both pre-authorizations were captured successfully. The merchant will process and ship your split order!
+            </p>
           </div>
-          <div className="bg-white/80 p-3 rounded-xl border border-gray-200/50">
-            <span className="text-[10px] font-bold uppercase text-emerald-600 block">
-              {!isHostUser ? '👉 Your Split Total' : 'Partner Share (Total)'}
-            </span>
-            <span className="text-lg font-black text-emerald-900">${totalShareWithFees.toFixed(2)}</span>
+        ) : (
+          <div className="bg-white p-6 rounded-3xl shadow-md border border-gray-200 space-y-4">
+            <h3 className="text-base font-extrabold border-b border-gray-100 pb-3">Price Breakdown (Per Person)</h3>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between text-gray-600">
+                <span>Original Item Price</span>
+                <span className="font-semibold">${itemPrice.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-gray-600">
+                <span>50/50 Base Share</span>
+                <span className="font-semibold">${baseShare.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-gray-600">
+                <span>2.5% Platform Fee</span>
+                <span className="font-semibold">+${platformFee.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-gray-600">
+                <span>Stripe Processing Fee</span>
+                <span className="font-semibold">+${stripeFee.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-base font-black text-gray-900 pt-2 border-t border-gray-100">
+                <span>Total Amount Due</span>
+                <span className="text-blue-600">${totalShare.toFixed(2)}</span>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
-
-      {/* Loading Spinner */}
-      {loadingSecret && lobby.status !== 'MATCHED' && (
-        <div className="p-8 text-center bg-gray-50 rounded-2xl border border-gray-200 space-y-2">
-          <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-          <p className="text-sm font-semibold text-gray-700">Loading checkout...</p>
-        </div>
-      )}
-
-      {/* API Errors */}
-      {apiError && (
-        <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs space-y-1">
-          <p className="font-bold">Initialization Notice:</p>
-          <p>{apiError}</p>
-        </div>
-      )}
-
-      {/* Stripe Payment Form */}
-      {!loadingSecret &&
-        lobby.status !== 'MATCHED' &&
-        clientSecret &&
-        ((isHostUser && isHostPendingHold) || (!isHostUser && isPartnerPendingHold)) && (
-          <Elements stripe={stripePromise} options={{ clientSecret }}>
-            <CheckoutForm
-              lobbyId={lobbyId}
-              role={isHostUser ? 'HOST' : 'PARTNER'}
-              onSuccess={() => {
-                window.location.reload();
-              }}
-            />
-          </Elements>
         )}
 
-      {/* Share Partner Link Box (ALWAYS visible on Host Dashboard after Host payment authorization) */}
-      {isHostUser && lobby.host_payment_intent_id && lobby.status !== 'MATCHED' && (
-        <div className="bg-blue-50/80 border border-blue-200 rounded-2xl p-5 space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-600 text-white rounded-xl shadow-sm">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684"
-                />
-              </svg>
+        {/* Invite Link Section for Host */}
+        {isHost && hasHostPaid && !isMatched && (
+          <div className="bg-blue-50 border border-blue-200 p-6 rounded-3xl space-y-3">
+            <div className="flex items-center gap-2 text-blue-900 font-bold text-sm">
+              <span>🔗 Share Invite Link With a Partner</span>
             </div>
-            <div>
-              <h3 className="font-bold text-blue-950 text-base">Host Hold Complete! Share Invite Link</h3>
-              <p className="text-xs text-blue-700">Send this link to anyone to split this deal.</p>
-            </div>
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-2">
-            <input
-              type="text"
-              readOnly
-              value={shareableUrl}
-              className="w-full bg-white border border-blue-200 rounded-xl px-3.5 py-2.5 text-xs text-gray-700 font-mono focus:outline-none"
-            />
+            <p className="text-xs text-blue-700">
+              Your payment hold is placed! Share this link with a friend or social group to split the BOGO deal.
+            </p>
             <button
-              type="button"
-              onClick={copyToClipboard}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition shadow-sm whitespace-nowrap flex items-center justify-center gap-1.5"
+              onClick={copyInviteLink}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-sm transition shadow-sm"
             >
-              {copied ? '✓ Link Copied!' : 'Copy Invite Link'}
+              {copied ? '✓ Invite Link Copied!' : 'Copy Invite Link'}
             </button>
           </div>
+        )}
 
-          <div className="pt-2 border-t border-blue-100 flex items-center justify-center gap-2 text-xs text-blue-800">
-            <span className="inline-block w-2 h-2 rounded-full bg-blue-500 animate-ping"></span>
-            <span>Waiting for partner to open link and complete checkout...</span>
+        {/* Checkout Form Container */}
+        {!isMatched && (
+          <div className="bg-white p-6 rounded-3xl shadow-md border border-gray-200 space-y-4">
+            {((isHost && !hasHostPaid) || (!isHost && !hasPartnerPaid)) ? (
+              <>
+                <h3 className="text-lg font-extrabold text-gray-900 border-b border-gray-100 pb-3">
+                  {isHost ? 'Authorize Host Payment Hold' : 'Join Deal & Authorize Your Split Share'}
+                </h3>
+                {clientSecret ? (
+                  <Elements stripe={stripePromise} options={{ clientSecret }}>
+                    <CheckoutForm lobbyId={lobbyId} role={role} onSuccess={fetchLobby} />
+                  </Elements>
+                ) : (
+                  <div className="py-6 text-center text-xs font-semibold text-gray-500">
+                    Preparing secure Stripe checkout...
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl text-xs font-semibold text-center space-y-1">
+                <div>⏳ Waiting for {isHost ? 'Partner' : 'Host'} to authorize their share...</div>
+                <div className="text-[11px] font-normal text-amber-700">
+                  Neither card is charged until both pre-authorizations succeed.
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-      )}
-
-      {/* MATCHED State */}
-      {lobby.status === 'MATCHED' && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 text-center space-y-4">
-          <div className="text-3xl">🎉</div>
-          <h2 className="text-xl font-bold text-emerald-950">Match Confirmed & Both Payments Captured!</h2>
-          <p className="text-sm text-emerald-800">
-            Both payment holds succeeded and have been captured. Download your shipping label below:
-          </p>
-          {lobby.shipping_label_url && (
-            <a
-              href={lobby.shipping_label_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-block bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-6 rounded-xl shadow transition text-sm"
-            >
-              Download Shipping Label
-            </a>
-          )}
-          {lobby.tracking_code && (
-            <p className="text-xs text-gray-600">
-              Tracking Code: <span className="font-mono font-semibold">{lobby.tracking_code}</span>
-            </p>
-          )}
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
-
 
 
 
