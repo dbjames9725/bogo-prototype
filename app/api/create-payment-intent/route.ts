@@ -14,11 +14,11 @@ export async function OPTIONS() {
 
 export async function POST(req: Request) {
   try {
-    const { lobbyId } = await req.json();
+    const { lobbyId, role } = await req.json();
 
-    if (!lobbyId) {
+    if (!lobbyId || !role) {
       return NextResponse.json(
-        { error: 'Missing lobbyId parameter' },
+        { error: 'Missing lobbyId or role parameter' },
         { status: 400, headers: corsHeaders }
       );
     }
@@ -37,37 +37,28 @@ export async function POST(req: Request) {
       );
     }
 
-    // 2. If Host intent exists and needs payment method, return Host secret
-    if (lobby.host_payment_intent_id) {
-      const hostIntent = await stripe.paymentIntents.retrieve(lobby.host_payment_intent_id);
-      if (hostIntent && hostIntent.status === 'requires_payment_method') {
-        return NextResponse.json(
-          {
-            clientSecret: hostIntent.client_secret,
-            paymentIntentId: hostIntent.id,
-            assignedRole: 'HOST',
-          },
-          { headers: corsHeaders }
-        );
+    const isHost = role === 'HOST';
+    const existingIntentId = isHost ? lobby.host_payment_intent_id : lobby.partner_payment_intent_id;
+
+    // 2. Reuse existing intent ONLY if it's currently awaiting card entry
+    if (existingIntentId) {
+      try {
+        const existingIntent = await stripe.paymentIntents.retrieve(existingIntentId);
+        if (existingIntent && existingIntent.status === 'requires_payment_method') {
+          return NextResponse.json(
+            {
+              clientSecret: existingIntent.client_secret,
+              paymentIntentId: existingIntent.id,
+            },
+            { headers: corsHeaders }
+          );
+        }
+      } catch (e) {
+        console.warn('Could not retrieve existing PaymentIntent, spinning up a new one.');
       }
     }
 
-    // 3. Otherwise, check/generate Partner PaymentIntent
-    if (lobby.partner_payment_intent_id) {
-      const partnerIntent = await stripe.paymentIntents.retrieve(lobby.partner_payment_intent_id);
-      if (partnerIntent && partnerIntent.status === 'requires_payment_method') {
-        return NextResponse.json(
-          {
-            clientSecret: partnerIntent.client_secret,
-            paymentIntentId: partnerIntent.id,
-            assignedRole: 'PARTNER',
-          },
-          { headers: corsHeaders }
-        );
-      }
-    }
-
-    // 4. Generate new Partner PaymentIntent
+    // 3. Calculate authoritative per-person total
     const originalPrice = lobby.item_price || 0;
     const baseShare = originalPrice / 2;
     const platformFee = originalPrice * 0.025;
@@ -75,24 +66,25 @@ export async function POST(req: Request) {
     const totalAmount = baseShare + platformFee + stripeFee;
     const amountInCents = Math.round(totalAmount * 100);
 
-    const partnerIntent = await stripe.paymentIntents.create({
+    // 4. Create a NEW PaymentIntent specifically for this role
+    const paymentIntent = await stripe.paymentIntents.create({
       amount: amountInCents,
       currency: 'usd',
       capture_method: 'manual',
-      metadata: { lobbyId, role: 'PARTNER' },
+      metadata: { lobbyId, role },
     });
 
-    // Save partner_payment_intent_id to database
-    await supabase
-      .from('lobbies')
-      .update({ partner_payment_intent_id: partnerIntent.id })
-      .eq('id', lobbyId);
+    // 5. Update Supabase with the role-specific intent ID
+    const updateColumn = isHost
+      ? { host_payment_intent_id: paymentIntent.id }
+      : { partner_payment_intent_id: paymentIntent.id };
+
+    await supabase.from('lobbies').update(updateColumn).eq('id', lobbyId);
 
     return NextResponse.json(
       {
-        clientSecret: partnerIntent.client_secret,
-        paymentIntentId: partnerIntent.id,
-        assignedRole: 'PARTNER',
+        clientSecret: paymentIntent.client_secret,
+        paymentIntentId: paymentIntent.id,
       },
       { headers: corsHeaders }
     );
@@ -104,3 +96,4 @@ export async function POST(req: Request) {
     );
   }
 }
+
