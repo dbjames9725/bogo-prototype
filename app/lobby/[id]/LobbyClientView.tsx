@@ -5,9 +5,19 @@ import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { supabase } from '@/lib/supabase';
 
+// Initialize Stripe JS
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 
-interface LobbyData {
+export interface AddressData {
+  name: string;
+  street1: string;
+  city: string;
+  state: string;
+  zip: string;
+  phone: string;
+}
+
+export interface LobbyData {
   id: string;
   item_name: string;
   item_price: number;
@@ -15,22 +25,28 @@ interface LobbyData {
   deal_type: string;
   user_a_share: number;
   user_b_share: number;
+  host_share?: number;
+  partner_share?: number;
   status: string;
   host_payment_intent_id?: string;
   partner_payment_intent_id?: string;
+  user_a_address?: AddressData;
+  user_b_address?: AddressData;
   user_a_variant?: any;
   user_b_variant?: any;
+  created_at?: string;
 }
 
-function CheckoutForm({
-  lobbyId,
-  role,
-  onSuccess,
-}: {
+interface CheckoutFormProps {
   lobbyId: string;
   role: 'HOST' | 'PARTNER';
   onSuccess: () => void;
-}) {
+}
+
+// ----------------------------------------------------------------------
+// CheckoutForm Sub-Component: Handles Address & Stripe Hold Submission
+// ----------------------------------------------------------------------
+function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
   const stripe = useStripe();
   const elements = useElements();
 
@@ -47,17 +63,20 @@ function CheckoutForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!stripe || !elements) return;
+    if (!stripe || !elements) {
+      setErrorMessage('Stripe SDK has not loaded yet. Please wait a moment and try again.');
+      return;
+    }
 
     setLoading(true);
     setErrorMessage('');
 
     try {
-      // 1. Confirm Payment Hold with Stripe
+      // 1. Authorize card pre-authorization hold with Stripe
       const { error, paymentIntent } = await stripe.confirmPayment({
         elements,
         confirmParams: {
-          return_url: window.location.href,
+          return_url: typeof window !== 'undefined' ? window.location.href : '',
         },
         redirect: 'if_required',
       });
@@ -70,9 +89,9 @@ function CheckoutForm({
 
       if (paymentIntent && (paymentIntent.status === 'requires_capture' || paymentIntent.status === 'succeeded')) {
         const isHost = role === 'HOST';
-        const addressData = { name, street1: street, city, state, zip, phone };
+        const addressData: AddressData = { name, street1: street, city, state, zip, phone };
 
-        // 2. FORCE write payment_intent_id and address to Supabase
+        // 2. Explicitly write Payment Intent ID and Shipping Address to Supabase
         const updateData = isHost
           ? { host_payment_intent_id: paymentIntent.id, user_a_address: addressData }
           : { partner_payment_intent_id: paymentIntent.id, user_b_address: addressData };
@@ -83,14 +102,15 @@ function CheckoutForm({
           .eq('id', lobbyId);
 
         if (dbError) {
-          throw new Error('Failed to update lobby details in database: ' + dbError.message);
+          throw new Error('Failed updating database with payment intent: ' + dbError.message);
         }
 
+        // Tag local browser as Host owner
         if (isHost && typeof window !== 'undefined') {
           localStorage.setItem(`hosted_${lobbyId}`, 'true');
         }
 
-        // 3. Trigger Dual Capture if Partner completes authorization
+        // 3. Trigger Dual Capture endpoint if Partner completes authorization
         if (!isHost) {
           const confirmRes = await fetch('/api/confirm-match', {
             method: 'POST',
@@ -101,14 +121,17 @@ function CheckoutForm({
           const confirmData = await confirmRes.json();
 
           if (!confirmRes.ok) {
-            throw new Error(confirmData.error || 'Failed to capture matched payments');
+            throw new Error(confirmData.error || 'Failed capturing dual payment holds');
           }
         }
 
+        // Refresh parent lobby state
         onSuccess();
+      } else {
+        setErrorMessage('Unexpected payment status. Please try submitting again.');
       }
     } catch (err: any) {
-      console.error('Checkout error:', err);
+      console.error('Checkout Form Submission Error:', err);
       setErrorMessage(err.message || 'An unexpected error occurred during checkout');
     } finally {
       setLoading(false);
@@ -117,140 +140,182 @@ function CheckoutForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Shipping Address Inputs */}
       <div className="bg-gray-50 p-4 rounded-xl space-y-3 border border-gray-200">
-        <h4 className="text-xs font-bold uppercase text-gray-500 tracking-wider">Shipping & Billing Address</h4>
-        <input
-          type="text"
-          placeholder="Full Name"
-          required
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="w-full p-2.5 text-sm border rounded-lg bg-white"
-        />
-        <input
-          type="text"
-          placeholder="Street Address"
-          required
-          value={street}
-          onChange={(e) => setStreet(e.target.value)}
-          className="w-full p-2.5 text-sm border rounded-lg bg-white"
-        />
-        <div className="grid grid-cols-3 gap-2">
+        <h4 className="text-xs font-bold uppercase text-gray-500 tracking-wider">
+          Shipping & Billing Address
+        </h4>
+        <div>
+          <label className="block text-[11px] font-semibold text-gray-600 mb-1">Full Name</label>
           <input
             type="text"
-            placeholder="City"
+            placeholder="Jane Doe"
             required
-            value={city}
-            onChange={(e) => setCity(e.target.value)}
-            className="p-2.5 text-sm border rounded-lg bg-white"
-          />
-          <input
-            type="text"
-            placeholder="State"
-            required
-            value={state}
-            onChange={(e) => setState(e.target.value)}
-            className="p-2.5 text-sm border rounded-lg bg-white"
-          />
-          <input
-            type="text"
-            placeholder="ZIP Code"
-            required
-            value={zip}
-            onChange={(e) => setZip(e.target.value)}
-            className="p-2.5 text-sm border rounded-lg bg-white"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full p-2.5 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
-        <input
-          type="tel"
-          placeholder="Phone Number"
-          required
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          className="w-full p-2.5 text-sm border rounded-lg bg-white"
-        />
+        <div>
+          <label className="block text-[11px] font-semibold text-gray-600 mb-1">Street Address</label>
+          <input
+            type="text"
+            placeholder="123 Main St, Apt 4B"
+            required
+            value={street}
+            onChange={(e) => setStreet(e.target.value)}
+            className="w-full p-2.5 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <div>
+            <label className="block text-[11px] font-semibold text-gray-600 mb-1">City</label>
+            <input
+              type="text"
+              placeholder="New York"
+              required
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              className="w-full p-2.5 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-[11px] font-semibold text-gray-600 mb-1">State</label>
+            <input
+              type="text"
+              placeholder="NY"
+              required
+              value={state}
+              onChange={(e) => setState(e.target.value)}
+              className="w-full p-2.5 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-[11px] font-semibold text-gray-600 mb-1">ZIP Code</label>
+            <input
+              type="text"
+              placeholder="10001"
+              required
+              value={zip}
+              onChange={(e) => setZip(e.target.value)}
+              className="w-full p-2.5 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+        <div>
+          <label className="block text-[11px] font-semibold text-gray-600 mb-1">Phone Number</label>
+          <input
+            type="tel"
+            placeholder="(555) 000-0000"
+            required
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            className="w-full p-2.5 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
       </div>
 
+      {/* Stripe Payment Element Component */}
       <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
-        <h4 className="text-xs font-bold uppercase text-gray-500 tracking-wider mb-3">Payment Method</h4>
+        <h4 className="text-xs font-bold uppercase text-gray-500 tracking-wider mb-3">
+          Payment Method
+        </h4>
         <PaymentElement />
       </div>
 
+      {/* Error Alert Box */}
       {errorMessage && (
         <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-lg font-semibold">
           ⚠️ {errorMessage}
         </div>
       )}
 
+      {/* Submit Action Button */}
       <button
         type="submit"
         disabled={!stripe || loading}
-        className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-lg transition disabled:opacity-50 text-base"
+        className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-lg transition disabled:opacity-50 text-base cursor-pointer"
       >
-        {loading ? 'Authorizing Hold...' : `Authorize Payment (${role === 'HOST' ? 'Host' : 'Partner'} Share)`}
+        {loading
+          ? 'Authorizing Hold...'
+          : `Authorize Payment (${role === 'HOST' ? 'Host' : 'Partner'} Share)`}
       </button>
     </form>
   );
 }
 
+// ----------------------------------------------------------------------
+// Main LobbyClientView Page Controller
+// ----------------------------------------------------------------------
 export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const [lobby, setLobby] = useState<LobbyData | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [role, setRole] = useState<'HOST' | 'PARTNER'>('PARTNER');
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const fetchLobby = async () => {
-    const { data, error } = await supabase
-      .from('lobbies')
-      .select('*')
-      .eq('id', lobbyId)
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('lobbies')
+        .select('*')
+        .eq('id', lobbyId)
+        .single();
 
-    if (error || !data) {
-      console.error('Error fetching lobby:', error);
-      setLoading(false);
-      return;
-    }
+      if (error || !data) {
+        console.error('Error fetching lobby record:', error);
+        setFetchError('Lobby record not found in database.');
+        setLoading(false);
+        return;
+      }
 
-    setLobby(data);
+      setLobby(data);
 
-    const isHost = typeof window !== 'undefined' && localStorage.getItem(`hosted_${lobbyId}`) === 'true';
-    const currentRole = isHost ? 'HOST' : 'PARTNER';
-    setRole(currentRole);
+      // Determine local browser ownership role
+      const isHost =
+        typeof window !== 'undefined' && localStorage.getItem(`hosted_${lobbyId}`) === 'true';
+      const currentRole = isHost ? 'HOST' : 'PARTNER';
+      setRole(currentRole);
 
-    const hasPaid = isHost ? !!data.host_payment_intent_id : !!data.partner_payment_intent_id;
+      const hasPaid = isHost ? !!data.host_payment_intent_id : !!data.partner_payment_intent_id;
 
-    if (!hasPaid && data.status !== 'MATCHED') {
-      try {
+      // Initialize Payment Intent if user hasn't authorized payment yet
+      if (!hasPaid && data.status !== 'MATCHED') {
         const res = await fetch('/api/create-payment-intent', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ lobbyId, role: currentRole }),
         });
+
         const intentData = await res.json();
-       
+
         if (intentData.clientSecret && intentData.paymentIntentId) {
           setClientSecret(intentData.clientSecret);
-         
-          // Immediately record generated payment intent ID to Supabase
-          const updateCol = currentRole === 'HOST'
-            ? { host_payment_intent_id: intentData.paymentIntentId }
-            : { partner_payment_intent_id: intentData.paymentIntentId };
-           
-          await supabase.from('lobbies').update(updateCol).eq('id', lobbyId);
-        }
-      } catch (err) {
-        console.error('Failed creating PaymentIntent:', err);
-      }
-    }
 
-    setLoading(false);
+          // Save intent ID back to Supabase to establish database pairing link
+          const updateCol =
+            currentRole === 'HOST'
+              ? { host_payment_intent_id: intentData.paymentIntentId }
+              : { partner_payment_intent_id: intentData.paymentIntentId };
+
+          await supabase.from('lobbies').update(updateCol).eq('id', lobbyId);
+        } else if (intentData.error) {
+          console.error('Create PaymentIntent Server Error:', intentData.error);
+        }
+      }
+    } catch (err: any) {
+      console.error('Lobby Fetching Logic Error:', err);
+      setFetchError('Unexpected error loading lobby details.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     fetchLobby();
 
+    // Subscribe to real-time changes on this specific lobby record
     const channel = supabase
       .channel(`lobby_${lobbyId}`)
       .on(
@@ -275,7 +340,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     }
   };
 
-  if (loading || !lobby) {
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-500 font-sans">
         <div className="flex items-center gap-3 bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
@@ -286,6 +351,19 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     );
   }
 
+  if (fetchError || !lobby) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4 font-sans text-gray-900">
+        <div className="max-w-md bg-white p-8 rounded-3xl shadow-md border border-gray-200 text-center space-y-4">
+          <div className="text-4xl">⚠️</div>
+          <h2 className="text-xl font-extrabold">Lobby Not Found</h2>
+          <p className="text-xs text-gray-500">{fetchError || 'Unable to locate this lobby.'}</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Authoritative financial calculations
   const itemPrice = lobby.item_price || 0;
   const baseShare = itemPrice / 2;
   const platformFee = itemPrice * 0.025;
@@ -300,19 +378,21 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   return (
     <div className="min-h-screen bg-gray-100 py-8 px-4 font-sans text-gray-900">
       <div className="max-w-xl mx-auto space-y-6">
+        {/* Role Header Banner */}
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 flex items-center justify-between">
           <div>
             <span className="text-xs font-extrabold uppercase tracking-wider text-blue-600 bg-blue-50 px-2.5 py-1 rounded-md">
               {isHost ? '👑 HOST DASHBOARD' : '🤝 PARTNER DEAL INVITATION'}
             </span>
-            <h2 className="text-xl font-extrabold mt-2">{lobby.item_name}</h2>
+            <h2 className="text-xl font-extrabold mt-2 text-gray-900">{lobby.item_name}</h2>
           </div>
           <div className="text-right">
             <span className="text-xs text-gray-400 block font-semibold">Deal Type</span>
-            <span className="text-sm font-bold text-gray-700">{lobby.deal_type}</span>
+            <span className="text-sm font-bold text-gray-700">{lobby.deal_type || 'BOGO'}</span>
           </div>
         </div>
 
+        {/* Status Display Card */}
         {isMatched ? (
           <div className="bg-emerald-600 text-white p-6 rounded-3xl shadow-lg space-y-2 text-center">
             <div className="text-4xl">🎉</div>
@@ -323,7 +403,9 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           </div>
         ) : (
           <div className="bg-white p-6 rounded-3xl shadow-md border border-gray-200 space-y-4">
-            <h3 className="text-base font-extrabold border-b border-gray-100 pb-3">Price Breakdown (Per Person)</h3>
+            <h3 className="text-base font-extrabold border-b border-gray-100 pb-3">
+              Price Breakdown (Per Person)
+            </h3>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between text-gray-600">
                 <span>Original Item Price</span>
@@ -349,6 +431,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           </div>
         )}
 
+        {/* Host Invite Link Container */}
         {isHost && hasHostPaid && !isMatched && (
           <div className="bg-blue-50 border border-blue-200 p-6 rounded-3xl space-y-3">
             <div className="flex items-center gap-2 text-blue-900 font-bold text-sm">
@@ -359,16 +442,17 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
             </p>
             <button
               onClick={copyInviteLink}
-              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-sm transition shadow-sm"
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-sm transition shadow-sm cursor-pointer"
             >
               {copied ? '✓ Invite Link Copied!' : 'Copy Invite Link'}
             </button>
           </div>
         )}
 
+        {/* Active Checkout Container */}
         {!isMatched && (
           <div className="bg-white p-6 rounded-3xl shadow-md border border-gray-200 space-y-4">
-            {((isHost && !hasHostPaid) || (!isHost && !hasPartnerPaid)) ? (
+            {(isHost && !hasHostPaid) || (!isHost && !hasPartnerPaid) ? (
               <>
                 <h3 className="text-lg font-extrabold text-gray-900 border-b border-gray-100 pb-3">
                   {isHost ? 'Authorize Host Payment Hold' : 'Join Deal & Authorize Your Split Share'}
@@ -397,5 +481,3 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     </div>
   );
 }
-
-
