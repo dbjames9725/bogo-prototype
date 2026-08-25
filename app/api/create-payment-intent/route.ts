@@ -18,7 +18,7 @@ export async function POST(req: Request) {
 
     if (!lobbyId || !role) {
       return NextResponse.json(
-        { error: 'Missing lobbyId or role parameter' },
+        { error: 'Missing required parameters: lobbyId or role' },
         { status: 400, headers: corsHeaders }
       );
     }
@@ -32,7 +32,7 @@ export async function POST(req: Request) {
 
     if (error || !lobby) {
       return NextResponse.json(
-        { error: 'Lobby record not found' },
+        { error: 'Lobby record not found in database' },
         { status: 404, headers: corsHeaders }
       );
     }
@@ -40,11 +40,14 @@ export async function POST(req: Request) {
     const isHost = role === 'HOST';
     const existingIntentId = isHost ? lobby.host_payment_intent_id : lobby.partner_payment_intent_id;
 
-    // 2. Reuse existing intent ONLY if it's currently awaiting card entry
+    // 2. Reuse existing uncaptured intent if available
     if (existingIntentId) {
       try {
         const existingIntent = await stripe.paymentIntents.retrieve(existingIntentId);
-        if (existingIntent && existingIntent.status === 'requires_payment_method') {
+        if (
+          existingIntent &&
+          (existingIntent.status === 'requires_payment_method' || existingIntent.status === 'requires_capture')
+        ) {
           return NextResponse.json(
             {
               clientSecret: existingIntent.client_secret,
@@ -54,11 +57,11 @@ export async function POST(req: Request) {
           );
         }
       } catch (e) {
-        console.warn('Could not retrieve existing PaymentIntent, spinning up a new one.');
+        console.warn('Could not retrieve existing PaymentIntent, creating a new one.');
       }
     }
 
-    // 3. Calculate authoritative per-person total
+    // 3. Calculate authoritative split totals
     const originalPrice = lobby.item_price || 0;
     const baseShare = originalPrice / 2;
     const platformFee = originalPrice * 0.025;
@@ -66,7 +69,7 @@ export async function POST(req: Request) {
     const totalAmount = baseShare + platformFee + stripeFee;
     const amountInCents = Math.round(totalAmount * 100);
 
-    // 4. Create a NEW PaymentIntent specifically for this role
+    // 4. Create new Stripe PaymentIntent
     const paymentIntent = await stripe.paymentIntents.create({
       amount: amountInCents,
       currency: 'usd',
@@ -74,7 +77,7 @@ export async function POST(req: Request) {
       metadata: { lobbyId, role },
     });
 
-    // 5. Update Supabase with the role-specific intent ID
+    // 5. CRITICAL FIX: Immediately save the generated intent ID to Supabase
     const updateColumn = isHost
       ? { host_payment_intent_id: paymentIntent.id }
       : { partner_payment_intent_id: paymentIntent.id };
@@ -89,11 +92,10 @@ export async function POST(req: Request) {
       { headers: corsHeaders }
     );
   } catch (err: any) {
-    console.error('Create Payment Intent Error:', err.message);
+    console.error('Stripe Server Intent Error:', err.message);
     return NextResponse.json(
       { error: err.message },
       { status: 500, headers: corsHeaders }
     );
   }
 }
-

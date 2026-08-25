@@ -5,6 +5,7 @@ import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { supabase } from '@/lib/supabase';
 
+// Initialize Stripe JS SDK
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 
 export interface AddressData {
@@ -42,6 +43,9 @@ interface CheckoutFormProps {
   onSuccess: () => void;
 }
 
+// ----------------------------------------------------------------------
+// CheckoutForm Sub-Component: Address Entry & Stripe Hold Execution
+// ----------------------------------------------------------------------
 function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
   const stripe = useStripe();
   const elements = useElements();
@@ -68,6 +72,7 @@ function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
     setErrorMessage('');
 
     try {
+      // 1. Authorize card pre-authorization hold with Stripe
       const { error, paymentIntent } = await stripe.confirmPayment({
         elements,
         confirmParams: {
@@ -90,6 +95,7 @@ function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
           ? { host_payment_intent_id: paymentIntent.id, user_a_address: addressData }
           : { partner_payment_intent_id: paymentIntent.id, user_b_address: addressData };
 
+        // 2. Await database write confirmation to prevent race conditions
         const { error: dbError } = await supabase
           .from('lobbies')
           .update(updateData)
@@ -99,12 +105,15 @@ function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
           throw new Error('Failed updating database with payment intent: ' + dbError.message);
         }
 
+        // Tag local browser as Host owner
         if (isHost && typeof window !== 'undefined') {
           localStorage.setItem(`hosted_${lobbyId}`, 'true');
         }
 
-        // Trigger Dual Capture only when Partner completes checkout
+        // 3. Small delay to ensure database sync before triggering dual capture
         if (!isHost) {
+          await new Promise((res) => setTimeout(res, 300));
+
           const confirmRes = await fetch('/api/confirm-match', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -118,6 +127,7 @@ function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
           }
         }
 
+        // Refresh lobby state on current view
         onSuccess();
       } else {
         setErrorMessage('Unexpected payment status. Please try submitting again.');
@@ -132,6 +142,7 @@ function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Shipping Address Inputs */}
       <div className="bg-gray-50 p-4 rounded-xl space-y-3 border border-gray-200">
         <h4 className="text-xs font-bold uppercase text-gray-500 tracking-wider">
           Shipping & Billing Address
@@ -206,6 +217,7 @@ function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
         </div>
       </div>
 
+      {/* Stripe Payment Element */}
       <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
         <h4 className="text-xs font-bold uppercase text-gray-500 tracking-wider mb-3">
           Payment Method
@@ -213,12 +225,14 @@ function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
         <PaymentElement />
       </div>
 
+      {/* Error Banner */}
       {errorMessage && (
         <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-lg font-semibold">
           ⚠️ {errorMessage}
         </div>
       )}
 
+      {/* Action Button */}
       <button
         type="submit"
         disabled={!stripe || loading}
@@ -232,6 +246,9 @@ function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
   );
 }
 
+// ----------------------------------------------------------------------
+// Main LobbyClientView Container Component
+// ----------------------------------------------------------------------
 export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const [lobby, setLobby] = useState<LobbyData | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
@@ -264,7 +281,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
       const hasPartnerPaid = !!data.partner_payment_intent_id;
       const hasUserPaidForRole = isHost ? hasHostPaid : hasPartnerPaid;
 
-      // Request Payment Intent clientSecret ONLY if this user role has not completed their hold
+      // Request payment secret ONLY if this role has not completed payment AND lobby isn't matched
       if (!hasUserPaidForRole && data.status !== 'MATCHED') {
         const res = await fetch('/api/create-payment-intent', {
           method: 'POST',
@@ -277,7 +294,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
         if (intentData.clientSecret) {
           setClientSecret(intentData.clientSecret);
         } else if (intentData.error) {
-          console.error('Create PaymentIntent Error:', intentData.error);
+          console.error('Create PaymentIntent Server Error:', intentData.error);
         }
       }
     } catch (err: any) {
@@ -291,6 +308,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   useEffect(() => {
     fetchLobby();
 
+    // Subscribe to real-time changes on this lobby row in Supabase
     const channel = supabase
       .channel(`lobby_${lobbyId}`)
       .on(
@@ -338,6 +356,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     );
   }
 
+  // Financial Share Breakdown
   const itemPrice = lobby.item_price || 0;
   const baseShare = itemPrice / 2;
   const platformFee = itemPrice * 0.025;
@@ -348,12 +367,13 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const hasHostPaid = !!lobby.host_payment_intent_id;
   const hasPartnerPaid = !!lobby.partner_payment_intent_id;
  
-  // Real MATCH condition: BOTH holds must exist AND database status must be MATCHED
+  // Real MATCH state requirement: BOTH holds present AND status = MATCHED
   const isMatched = lobby.status === 'MATCHED' && hasHostPaid && hasPartnerPaid;
 
   return (
     <div className="min-h-screen bg-gray-100 py-8 px-4 font-sans text-gray-900">
       <div className="max-w-xl mx-auto space-y-6">
+        {/* Role Header */}
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 flex items-center justify-between">
           <div>
             <span className="text-xs font-extrabold uppercase tracking-wider text-blue-600 bg-blue-50 px-2.5 py-1 rounded-md">
@@ -367,6 +387,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           </div>
         </div>
 
+        {/* Status Display Card */}
         {isMatched ? (
           <div className="bg-emerald-600 text-white p-6 rounded-3xl shadow-lg space-y-2 text-center">
             <div className="text-4xl">🎉</div>
@@ -405,7 +426,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           </div>
         )}
 
-        {/* Invite Link displayed ONLY to Host after Host completes payment */}
+        {/* Invite Link for Host */}
         {isHost && hasHostPaid && !isMatched && (
           <div className="bg-blue-50 border border-blue-200 p-6 rounded-3xl space-y-3">
             <div className="flex items-center gap-2 text-blue-900 font-bold text-sm">
@@ -423,6 +444,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           </div>
         )}
 
+        {/* Active Form Section */}
         {!isMatched && (
           <div className="bg-white p-6 rounded-3xl shadow-md border border-gray-200 space-y-4">
             {(isHost && !hasHostPaid) || (!isHost && !hasPartnerPaid) ? (
