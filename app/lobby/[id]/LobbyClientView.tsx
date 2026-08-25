@@ -15,8 +15,6 @@ interface LobbyData {
   deal_type: string;
   user_a_share: number;
   user_b_share: number;
-  host_share?: number;
-  partner_share?: number;
   status: string;
   host_payment_intent_id?: string;
   partner_payment_intent_id?: string;
@@ -24,7 +22,6 @@ interface LobbyData {
   user_b_variant?: any;
 }
 
-// Inner Form Component handling card authorization & instant dual-capture
 function CheckoutForm({
   lobbyId,
   role,
@@ -75,7 +72,7 @@ function CheckoutForm({
         const isHost = role === 'HOST';
         const addressData = { name, street1: street, city, state, zip, phone };
 
-        // 2. Persist Payment Intent ID and Shipping Address to Supabase
+        // 2. FORCE write payment_intent_id and address to Supabase
         const updateData = isHost
           ? { host_payment_intent_id: paymentIntent.id, user_a_address: addressData }
           : { partner_payment_intent_id: paymentIntent.id, user_b_address: addressData };
@@ -93,7 +90,7 @@ function CheckoutForm({
           localStorage.setItem(`hosted_${lobbyId}`, 'true');
         }
 
-        // 3. Trigger Dual Capture immediately when Partner completes authorization
+        // 3. Trigger Dual Capture if Partner completes authorization
         if (!isHost) {
           const confirmRes = await fetch('/api/confirm-match', {
             method: 'POST',
@@ -108,7 +105,6 @@ function CheckoutForm({
           }
         }
 
-        // 4. Reload view state
         onSuccess();
       }
     } catch (err: any) {
@@ -197,7 +193,6 @@ function CheckoutForm({
   );
 }
 
-// Main Lobby Client View Container
 export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const [lobby, setLobby] = useState<LobbyData | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
@@ -205,7 +200,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Fetch initial lobby status and set up real-time listener
   const fetchLobby = async () => {
     const { data, error } = await supabase
       .from('lobbies')
@@ -221,12 +215,10 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
 
     setLobby(data);
 
-    // Determine Role: Host if created in this browser, else Partner
     const isHost = typeof window !== 'undefined' && localStorage.getItem(`hosted_${lobbyId}`) === 'true';
     const currentRole = isHost ? 'HOST' : 'PARTNER';
     setRole(currentRole);
 
-    // If active user has not submitted payment hold yet, fetch payment intent client secret
     const hasPaid = isHost ? !!data.host_payment_intent_id : !!data.partner_payment_intent_id;
 
     if (!hasPaid && data.status !== 'MATCHED') {
@@ -237,8 +229,16 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           body: JSON.stringify({ lobbyId, role: currentRole }),
         });
         const intentData = await res.json();
-        if (intentData.clientSecret) {
+       
+        if (intentData.clientSecret && intentData.paymentIntentId) {
           setClientSecret(intentData.clientSecret);
+         
+          // Immediately record generated payment intent ID to Supabase
+          const updateCol = currentRole === 'HOST'
+            ? { host_payment_intent_id: intentData.paymentIntentId }
+            : { partner_payment_intent_id: intentData.paymentIntentId };
+           
+          await supabase.from('lobbies').update(updateCol).eq('id', lobbyId);
         }
       } catch (err) {
         console.error('Failed creating PaymentIntent:', err);
@@ -251,7 +251,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   useEffect(() => {
     fetchLobby();
 
-    // Subscribe to Supabase Real-Time Updates
     const channel = supabase
       .channel(`lobby_${lobbyId}`)
       .on(
@@ -287,7 +286,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     );
   }
 
-  // Calculations
   const itemPrice = lobby.item_price || 0;
   const baseShare = itemPrice / 2;
   const platformFee = itemPrice * 0.025;
@@ -302,7 +300,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   return (
     <div className="min-h-screen bg-gray-100 py-8 px-4 font-sans text-gray-900">
       <div className="max-w-xl mx-auto space-y-6">
-        {/* Role Header */}
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 flex items-center justify-between">
           <div>
             <span className="text-xs font-extrabold uppercase tracking-wider text-blue-600 bg-blue-50 px-2.5 py-1 rounded-md">
@@ -316,7 +313,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           </div>
         </div>
 
-        {/* Status Card */}
         {isMatched ? (
           <div className="bg-emerald-600 text-white p-6 rounded-3xl shadow-lg space-y-2 text-center">
             <div className="text-4xl">🎉</div>
@@ -353,7 +349,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           </div>
         )}
 
-        {/* Invite Link Section for Host */}
         {isHost && hasHostPaid && !isMatched && (
           <div className="bg-blue-50 border border-blue-200 p-6 rounded-3xl space-y-3">
             <div className="flex items-center gap-2 text-blue-900 font-bold text-sm">
@@ -371,7 +366,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           </div>
         )}
 
-        {/* Checkout Form Container */}
         {!isMatched && (
           <div className="bg-white p-6 rounded-3xl shadow-md border border-gray-200 space-y-4">
             {((isHost && !hasHostPaid) || (!isHost && !hasPartnerPaid)) ? (
@@ -403,6 +397,5 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     </div>
   );
 }
-
 
 
