@@ -273,8 +273,18 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
 
       setLobby(data);
 
-      const isHost = typeof window !== 'undefined' && localStorage.getItem(`hosted_${lobbyId}`) === 'true';
+      // Check localStorage first
+      const isHostStored = typeof window !== 'undefined' && localStorage.getItem(`hosted_${lobbyId}`) === 'true';
+
+      // Smart Fallback: If host_payment_intent_id is not set in DB yet, this visitor is automatically the HOST
+      const isHost = isHostStored || !data.host_payment_intent_id;
       const currentRole = isHost ? 'HOST' : 'PARTNER';
+
+      // Ensure localStorage is updated so page reloads stick to HOST
+      if (isHost && typeof window !== 'undefined') {
+        localStorage.setItem(`hosted_${lobbyId}`, 'true');
+      }
+
       setRole(currentRole);
 
       const hasHostPaid = !!data.host_payment_intent_id;
@@ -366,7 +376,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const isHost = role === 'HOST';
   const hasHostPaid = !!lobby.host_payment_intent_id;
   const hasPartnerPaid = !!lobby.partner_payment_intent_id;
- 
+
   // Real MATCH state requirement: BOTH holds present AND status = MATCHED
   const isMatched = lobby.status === 'MATCHED' && hasHostPaid && hasPartnerPaid;
 
@@ -476,3 +486,4 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     </div>
   );
 }
+

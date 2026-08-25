@@ -82,8 +82,13 @@
         const data = await response.json();
 
         if (data.lobbyId) {
-          // Tag local storage BEFORE redirecting so the lobby page knows this tab is HOST
-          localStorage.setItem(`hosted_${data.lobbyId}`, 'true');
+          // CRITICAL: Mark this browser explicitly as the HOST before navigating
+          try {
+            localStorage.setItem(`hosted_${data.lobbyId}`, 'true');
+          } catch (e) {
+            console.error('LocalStorage write failed:', e);
+          }
+         
           window.location.href = `${BOGO_APP_URL}/lobby/${data.lobbyId}`;
         } else {
           alert('Could not start lobby: ' + (data.error || 'Unknown error'));
