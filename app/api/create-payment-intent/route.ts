@@ -23,7 +23,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // 1. Fetch lobby record from Supabase
+    // 1. Retrieve lobby record from Supabase
     const { data: lobby, error } = await supabase
       .from('lobbies')
       .select('*')
@@ -32,18 +32,17 @@ export async function POST(req: Request) {
 
     if (error || !lobby) {
       return NextResponse.json(
-        { error: 'Lobby record not found' },
+        { error: 'Lobby record not found in database' },
         { status: 404, headers: corsHeaders }
       );
     }
 
-    // 2. Check if a PaymentIntent ID is already saved for this role
+    // 2. Check if an intent ID already exists for this role
     const existingIntentId = role === 'HOST' ? lobby.host_payment_intent_id : lobby.partner_payment_intent_id;
 
     if (existingIntentId) {
       try {
         const existingIntent = await stripe.paymentIntents.retrieve(existingIntentId);
-        // If existing intent is still waiting for payment method or uncaptured, reuse it
         if (existingIntent && (existingIntent.status === 'requires_payment_method' || existingIntent.status === 'requires_capture')) {
           return NextResponse.json(
             {
@@ -58,16 +57,16 @@ export async function POST(req: Request) {
       }
     }
 
-    // 3. Calculate authoritative amount
+    // 3. Perform authoritative server-side fee calculation
     const originalPrice = lobby.item_price || 0;
     const baseShare = originalPrice / 2;
-    const platformFee = originalPrice * 0.025;
-    const stripeFee = baseShare * 0.029 + 0.30;
+    const platformFee = originalPrice * 0.025; // 2.5% Platform Fee
+    const stripeFee = baseShare * 0.029 + 0.30; // 2.9% + $0.30 Processing Fee
     const totalAmount = baseShare + platformFee + stripeFee;
 
     const amountInCents = Math.round(totalAmount * 100);
 
-    // 4. Create single PaymentIntent
+    // 4. Create new Stripe PaymentIntent
     const paymentIntent = await stripe.paymentIntents.create({
       amount: amountInCents,
       currency: 'usd',
@@ -75,8 +74,11 @@ export async function POST(req: Request) {
       metadata: { lobbyId, role },
     });
 
-    // 5. Immediately bind the new PaymentIntent ID back to Supabase to prevent duplicates
-    const updateColumn = role === 'HOST' ? { host_payment_intent_id: paymentIntent.id } : { partner_payment_intent_id: paymentIntent.id };
+    // 5. CRITICAL FIX: Save Intent ID to Supabase IMMEDIATELY upon creation
+    const updateColumn = role === 'HOST'
+      ? { host_payment_intent_id: paymentIntent.id }
+      : { partner_payment_intent_id: paymentIntent.id };
+
     await supabase.from('lobbies').update(updateColumn).eq('id', lobbyId);
 
     return NextResponse.json(
