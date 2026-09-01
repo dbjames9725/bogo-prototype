@@ -23,7 +23,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // 1. Fetch lobby record from Supabase
     const { data: lobby, error } = await supabase
       .from('lobbies')
       .select('*')
@@ -40,7 +39,6 @@ export async function POST(req: Request) {
     const isHost = role === 'HOST';
     const existingIntentId = isHost ? lobby.host_payment_intent_id : lobby.partner_payment_intent_id;
 
-    // 2. Reuse existing uncaptured intent if available
     if (existingIntentId) {
       try {
         const existingIntent = await stripe.paymentIntents.retrieve(existingIntentId);
@@ -61,15 +59,21 @@ export async function POST(req: Request) {
       }
     }
 
-    // 3. Calculate authoritative split totals
-    const originalPrice = lobby.item_price || 0;
-    const baseShare = originalPrice / 2;
-    const platformFee = originalPrice * 0.025;
-    const stripeFee = baseShare * 0.029 + 0.30;
-    const totalAmount = baseShare + platformFee + stripeFee;
-    const amountInCents = Math.round(totalAmount * 100);
+    // Convert original price to cents first to prevent floating-point precision errors
+    const itemPriceCents = Math.round((lobby.item_price || 0) * 100);
 
-    // 4. Create new Stripe PaymentIntent
+    // Split base share in cents
+    const baseShareCents = Math.round(itemPriceCents / 2);
+
+    // Calculate 2.5% platform fee strictly on the INDIVIDUAL share (fixes double fee bug)
+    const platformFeeCents = Math.round(baseShareCents * 0.025);
+
+    // Calculate Stripe processing fee (2.9% + 30 cents)
+    const stripeFeeCents = Math.round(baseShareCents * 0.029 + 30);
+
+    // Sum total amount directly in integer cents
+    const amountInCents = baseShareCents + platformFeeCents + stripeFeeCents;
+
     const paymentIntent = await stripe.paymentIntents.create({
       amount: amountInCents,
       currency: 'usd',
@@ -77,7 +81,6 @@ export async function POST(req: Request) {
       metadata: { lobbyId, role },
     });
 
-    // 5. CRITICAL FIX: Immediately save the generated intent ID to Supabase
     const updateColumn = isHost
       ? { host_payment_intent_id: paymentIntent.id }
       : { partner_payment_intent_id: paymentIntent.id };

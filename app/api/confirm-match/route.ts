@@ -23,7 +23,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // 1. Retry polling loop: Query Supabase up to 5 times (2.5s total) for both holds to settle
+    // Polling retry loop to handle Supabase DB propagation delay
     let lobby = null;
     for (let i = 0; i < 5; i++) {
       const { data } = await supabase
@@ -37,13 +37,16 @@ export async function POST(req: Request) {
           return NextResponse.json({ success: true, status: 'MATCHED' }, { headers: corsHeaders });
         }
 
+        if (data.status === 'PROCESSING') {
+          return NextResponse.json({ success: true, status: 'PROCESSING' }, { headers: corsHeaders });
+        }
+
         if (data.host_payment_intent_id && data.partner_payment_intent_id) {
           lobby = data;
           break;
         }
       }
 
-      // Wait 500ms before retrying database read
       await new Promise((res) => setTimeout(res, 500));
       lobby = data;
     }
@@ -66,37 +69,79 @@ export async function POST(req: Request) {
       );
     }
 
-    // 2. Safely capture both Stripe payment holds
+    // Optimistic Concurrency Check: Lock status to PROCESSING to prevent parallel captures
+    const { data: lockedLobby, error: lockError } = await supabase
+      .from('lobbies')
+      .update({ status: 'PROCESSING' })
+      .eq('id', lobbyId)
+      .eq('status', 'PENDING')
+      .select()
+      .single();
+
+    if (lockError || !lockedLobby) {
+      // Another concurrent request is already capturing this match
+      return NextResponse.json({ success: true, status: 'PROCESSING' }, { headers: corsHeaders });
+    }
+
     const captureSafely = async (intentId: string) => {
-      try {
-        const intent = await stripe.paymentIntents.retrieve(intentId);
-        if (intent.status === 'requires_capture') {
-          await stripe.paymentIntents.capture(intentId);
-        }
-      } catch (err: any) {
-        if (!err.message?.includes('already been captured')) {
-          throw err;
-        }
+      const intent = await stripe.paymentIntents.retrieve(intentId);
+      if (intent.status === 'requires_capture') {
+        await stripe.paymentIntents.capture(intentId);
       }
     };
 
-    await Promise.all([
-      captureSafely(host_payment_intent_id),
-      captureSafely(partner_payment_intent_id),
-    ]);
+    // Atomic Dual-Capture Logic with Rollback Protection
+    let hostCaptured = false;
+    let partnerCaptured = false;
 
-    // 3. Mark lobby status as MATCHED in Supabase
-    await supabase
-      .from('lobbies')
-      .update({ status: 'MATCHED' })
-      .eq('id', lobbyId);
+    try {
+      // Step 1: Capture Host hold
+      await captureSafely(host_payment_intent_id);
+      hostCaptured = true;
 
-    return NextResponse.json(
-      { success: true, status: 'MATCHED' },
-      { headers: corsHeaders }
-    );
+      // Step 2: Capture Partner hold
+      await captureSafely(partner_payment_intent_id);
+      partnerCaptured = true;
+
+      // Step 3: Mark Lobby as MATCHED
+      await supabase
+        .from('lobbies')
+        .update({ status: 'MATCHED' })
+        .eq('id', lobbyId);
+
+      return NextResponse.json(
+        { success: true, status: 'MATCHED' },
+        { headers: corsHeaders }
+      );
+    } catch (captureErr: any) {
+      console.error('Dual Capture Error encountered during process:', captureErr.message);
+
+      // Rollback Handling: If one payment captured but the other failed, refund the captured charge immediately
+      if (hostCaptured && !partnerCaptured) {
+        console.warn('Refunding Host intent due to Partner capture failure:', host_payment_intent_id);
+        await stripe.refunds.create({ payment_intent: host_payment_intent_id }).catch((e) => {
+          console.error('Critical: Failed to refund Host hold:', e.message);
+        });
+      } else if (!hostCaptured && partnerCaptured) {
+        console.warn('Refunding Partner intent due to Host capture failure:', partner_payment_intent_id);
+        await stripe.refunds.create({ payment_intent: partner_payment_intent_id }).catch((e) => {
+          console.error('Critical: Failed to refund Partner hold:', e.message);
+        });
+      }
+
+      // Mark Lobby status as FAILED so client UI can inform users
+      await supabase
+        .from('lobbies')
+        .update({ status: 'FAILED' })
+        .eq('id', lobbyId);
+
+      return NextResponse.json(
+        { error: `Payment capture failed: ${captureErr.message}. Any authorized charges were refunded.` },
+        { status: 500, headers: corsHeaders }
+      );
+    }
   } catch (err: any) {
-    console.error('Confirm match error:', err.message);
+    console.error('Confirm match server route error:', err.message);
     return NextResponse.json(
       { error: err.message || 'Failed processing dual-hold capture' },
       { status: 500, headers: corsHeaders }
