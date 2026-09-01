@@ -65,10 +65,11 @@ export async function POST(req: Request) {
     // Split base share in cents
     const baseShareCents = Math.round(itemPriceCents / 2);
 
-    // Calculate 2.5% platform fee strictly on the INDIVIDUAL share (fixes double fee bug)
-    const platformFeeCents = Math.round(baseShareCents * 0.025);
+    // Calculate 5% total platform fee on item price, then split it between both users (e.g. $6.44 total -> $3.22 per person)
+    const totalPlatformFeeCents = Math.round(itemPriceCents * 0.05);
+    const platformFeeCents = Math.round(totalPlatformFeeCents / 2);
 
-    // Calculate Stripe processing fee (2.9% + 30 cents)
+    // Calculate Stripe processing fee (2.9% + 30 cents) on base share
     const stripeFeeCents = Math.round(baseShareCents * 0.029 + 30);
 
     // Sum total amount directly in integer cents

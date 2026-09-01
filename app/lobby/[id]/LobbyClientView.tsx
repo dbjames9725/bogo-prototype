@@ -344,10 +344,10 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     );
   }
 
-  // UPDATED FEE CALCULATIONS (Calculates platform fee on individual share to match API route)
+  // UPDATED MATH: Calculates 5% total platform fee and splits it per user ($3.22 for $128.70 item)
   const itemPrice = lobby.item_price || 0;
   const baseShare = itemPrice / 2;
-  const platformFee = baseShare * 0.025;
+  const platformFee = (itemPrice * 0.05) / 2;
   const stripeFee = baseShare * 0.029 + 0.30;
   const totalShare = baseShare + platformFee + stripeFee;
 
@@ -395,7 +395,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
                 <span className="font-semibold">${baseShare.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-gray-600">
-                <span>2.5% Platform Fee</span>
+                <span>Platform Fee (5% Split)</span>
                 <span className="font-semibold">+${platformFee.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-gray-600">
