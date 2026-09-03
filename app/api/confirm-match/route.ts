@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { stripe } from '@/lib/stripe';
+import { sendMatchNotificationEmail } from '@/lib/email';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -104,10 +105,29 @@ export async function POST(req: Request) {
       partnerCaptured = true;
 
       // Step 3: Mark Lobby as MATCHED
-      await supabase
+      const { data: updatedLobby, error: updateError } = await supabase
         .from('lobbies')
         .update({ status: 'MATCHED' })
-        .eq('id', lobbyId);
+        .eq('id', lobbyId)
+        .select()
+        .single();
+
+      if (updateError || !updatedLobby) {
+        throw new Error('Failed to update lobby status to MATCHED in database');
+      }
+
+      // Step 4: Trigger automated merchant notification email
+      await sendMatchNotificationEmail({
+        lobbyId: updatedLobby.id,
+        itemName: updatedLobby.item_name,
+        itemPrice: updatedLobby.item_price,
+        userAAddress: updatedLobby.user_a_address,
+        userBAddress: updatedLobby.user_b_address,
+        userAVariant: updatedLobby.user_a_variant,
+        userBVariant: updatedLobby.user_b_variant,
+      }).catch((emailErr) => {
+        console.error('Failed sending match email notification:', emailErr.message);
+      });
 
       return NextResponse.json(
         { success: true, status: 'MATCHED' },
