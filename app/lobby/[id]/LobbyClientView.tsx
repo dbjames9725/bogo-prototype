@@ -295,7 +295,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   // Dynamic Retail Price, Tax Toggle & State Selector
-  const [activePrice, setActivePrice] = useState<number>(120);
+  const [activePrice, setActivePrice] = useState<number>(115);
   const [selectedState, setSelectedState] = useState<string>('NY');
   const [includeTax, setIncludeTax] = useState<boolean>(false);
 
@@ -337,7 +337,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
       }
 
       setLobby(data);
-      const initialPrice = data.item_price || 120;
+      const initialPrice = data.item_price || 115;
       setActivePrice(initialPrice);
 
       const isHostStored = typeof window !== 'undefined' && localStorage.getItem(`hosted_${lobbyId}`) === 'true';
@@ -437,8 +437,8 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const dealType = (lobby.deal_type || 'BOGO').toUpperCase();
   const isBogo50 = dealType === 'BOGO_50' || dealType === 'BUY_1_GET_1_50_OFF';
 
-  // 1. Standard Retail Cost (2 Items) = 2 * Item Retail Price
-  const standardRetailCost2Items = activePrice * 2;
+  // 1. Standard Retail Cost (2 Items) - Directly reflects Item Retail Price
+  const standardRetailCost2Items = activePrice;
 
   // 2. BOGO Promo Total (Pre-tax total for both items)
   const bogoPromoTotal = isBogo50 ? activePrice * 1.5 : activePrice;
@@ -530,15 +530,12 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           <div className="bg-white p-6 rounded-3xl shadow-md border border-gray-200 space-y-4">
             <h3 className="text-base font-extrabold border-b border-gray-100 pb-3 flex justify-between items-center">
               <span>Price Breakdown (Per Person)</span>
-              <span className="text-xs font-normal text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full font-bold">
-                Save ${(standardRetailCost2Items - bogoPromoTotal).toFixed(2)} Total
-              </span>
             </h3>
 
             <div className="space-y-2.5 text-sm">
               <div className="flex justify-between text-gray-600">
                 <span>Standard Retail Cost (2 Items)</span>
-                <span className="font-semibold text-gray-400 line-through">
+                <span className="font-semibold text-gray-900">
                   ${standardRetailCost2Items.toFixed(2)}
                 </span>
               </div>
