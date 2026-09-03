@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 // Complete 50 States + DC Average Combined Sales Tax Rates
 const STATE_TAX_RATES: Record<string, { name: string; rate: number }> = {
@@ -58,36 +59,80 @@ const STATE_TAX_RATES: Record<string, { name: string; rate: number }> = {
 };
 
 export default function HomePage() {
+  const router = useRouter();
+
   const [itemName, setItemName] = useState<string>('Premium Noise-Canceling Headphones');
   const [activePrice, setActivePrice] = useState<number>(120);
   const [dealType, setDealType] = useState<'BOGO_FREE' | 'BOGO_50'>('BOGO_FREE');
   const [selectedState, setSelectedState] = useState<string>('NY');
   const [includeTax, setIncludeTax] = useState<boolean>(false);
 
+  const [isCreatingLobby, setIsCreatingLobby] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string>('');
+
   // -------------------------------------------------------------
   // ACCURATE PRE-TAX MATH ENGINE
   // -------------------------------------------------------------
   const itemPrice = Math.max(0.01, activePrice);
 
-  // 1. BOGO Promo Total (Pre-tax total for both items: $120.00 for BOGO Free)
+  // 1. BOGO Promo Total
   const isBogo50 = dealType === 'BOGO_50';
   const bogoPromoTotal = isBogo50 ? itemPrice * 1.5 : itemPrice;
 
-  // 2. Your Split Share (Pre-tax base share per person: $120.00 / 2 = $60.00)
+  // 2. Your Split Share (Pre-tax)
   const yourSplitShare = bogoPromoTotal / 2;
 
-  // 3. Platform Fee (5% of single retail item price split in half: $120 * 0.05 / 2 = $3.00)
+  // 3. Platform Fee
   const platformFee = (itemPrice * 0.05) / 2;
 
-  // 4. Optional Sales Tax (ONLY calculated if checkbox is checked)
+  // 4. Optional Sales Tax
   const stateInfo = STATE_TAX_RATES[selectedState] || { name: 'Default', rate: 0.07 };
   const estimatedTax = includeTax ? yourSplitShare * stateInfo.rate : 0;
 
-  // 5. Stripe Processing Fee (2.9% + $0.30 on share + tax)
+  // 5. Stripe Processing Fee
   const stripeFee = (yourSplitShare + estimatedTax) * 0.029 + 0.30;
 
-  // 6. Final Amount Due per person
+  // 6. Final Amount Due
   const totalAmountDue = yourSplitShare + platformFee + estimatedTax + stripeFee;
+
+  // -------------------------------------------------------------
+  // LOBBY CREATION & NAVIGATION HANDLER
+  // -------------------------------------------------------------
+  const handleLockInSplit = async () => {
+    setIsCreatingLobby(true);
+    setErrorMessage('');
+
+    try {
+      const res = await fetch('/api/create-lobby', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          itemName,
+          itemPrice,
+          dealType,
+          userState: selectedState,
+          includeTax,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.lobbyId) {
+        throw new Error(data.error || 'Failed to initialize BOGO lobby');
+      }
+
+      // Mark user as host in local storage and redirect to lobby
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(`hosted_${data.lobbyId}`, 'true');
+      }
+
+      router.push(`/lobby/${data.lobbyId}`);
+    } catch (err: any) {
+      console.error('Lock in Split Error:', err);
+      setErrorMessage(err.message || 'Unable to create lobby. Please try again.');
+      setIsCreatingLobby(false);
+    }
+  };
 
   return (
     <main className="min-h-screen bg-neutral-950 text-white py-12 px-4 font-sans antialiased">
@@ -271,13 +316,30 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Action CTA */}
+          {errorMessage && (
+            <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs rounded-xl font-semibold text-center">
+              ⚠️ {errorMessage}
+            </div>
+          )}
+
+          {/* Action CTA Button */}
           <button
             type="button"
-            className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-xl shadow-lg transition flex items-center justify-center gap-2 cursor-pointer text-base"
+            onClick={handleLockInSplit}
+            disabled={isCreatingLobby}
+            className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-xl shadow-lg transition flex items-center justify-center gap-2 cursor-pointer text-base disabled:opacity-50"
           >
-            <span>Lock In This Split</span>
-            <span>➔</span>
+            {isCreatingLobby ? (
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span>Creating BOGO Lobby...</span>
+              </div>
+            ) : (
+              <>
+                <span>Lock In This Split</span>
+                <span>➔</span>
+              </>
+            )}
           </button>
         </div>
 
