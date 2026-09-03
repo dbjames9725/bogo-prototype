@@ -3,6 +3,10 @@ import { supabase } from '@/lib/supabase';
 import { stripe } from '@/lib/stripe';
 import { sendMatchNotificationEmail } from '@/lib/email';
 
+// Force Next.js to treat this route strictly as dynamic at request time (fixes Vercel page data collection build error)
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
