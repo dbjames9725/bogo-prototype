@@ -22,10 +22,6 @@ export interface LobbyData {
   item_price: number;
   total_price: number;
   deal_type: string;
-  user_a_share: number;
-  user_b_share: number;
-  host_share?: number;
-  partner_share?: number;
   status: string;
   host_payment_intent_id?: string;
   partner_payment_intent_id?: string;
@@ -33,23 +29,79 @@ export interface LobbyData {
   user_b_address?: AddressData;
   user_a_variant?: any;
   user_b_variant?: any;
-  created_at?: string;
 }
+
+// Complete 50 States + DC Average Combined Sales Tax Rates (State + Local)
+const STATE_TAX_RATES: Record<string, { name: string; rate: number }> = {
+  AL: { name: 'Alabama', rate: 0.0924 },
+  AK: { name: 'Alaska', rate: 0.0181 },
+  AZ: { name: 'Arizona', rate: 0.0837 },
+  AR: { name: 'Arkansas', rate: 0.0944 },
+  CA: { name: 'California', rate: 0.0885 },
+  CO: { name: 'Colorado', rate: 0.0778 },
+  CT: { name: 'Connecticut', rate: 0.0635 },
+  DE: { name: 'Delaware', rate: 0.0000 },
+  DC: { name: 'District of Columbia', rate: 0.0600 },
+  FL: { name: 'Florida', rate: 0.0700 },
+  GA: { name: 'Georgia', rate: 0.0738 },
+  HI: { name: 'Hawaii', rate: 0.0444 },
+  ID: { name: 'Idaho', rate: 0.0603 },
+  IL: { name: 'Illinois', rate: 0.0884 },
+  IN: { name: 'Indiana', rate: 0.0700 },
+  IA: { name: 'Iowa', rate: 0.0694 },
+  KS: { name: 'Kansas', rate: 0.0865 },
+  KY: { name: 'Kentucky', rate: 0.0600 },
+  LA: { name: 'Louisiana', rate: 0.0956 },
+  ME: { name: 'Maine', rate: 0.0550 },
+  MD: { name: 'Maryland', rate: 0.0600 },
+  MA: { name: 'Massachusetts', rate: 0.0625 },
+  MI: { name: 'Michigan', rate: 0.0600 },
+  MN: { name: 'Minnesota', rate: 0.0803 },
+  MS: { name: 'Mississippi', rate: 0.0707 },
+  MO: { name: 'Missouri', rate: 0.0833 },
+  MT: { name: 'Montana', rate: 0.0000 },
+  NE: { name: 'Nebraska', rate: 0.0697 },
+  NV: { name: 'Nevada', rate: 0.0823 },
+  NH: { name: 'New Hampshire', rate: 0.0000 },
+  NJ: { name: 'New Jersey', rate: 0.0660 },
+  NM: { name: 'New Mexico', rate: 0.0772 },
+  NY: { name: 'New York', rate: 0.0853 },
+  NC: { name: 'North Carolina', rate: 0.0698 },
+  ND: { name: 'North Dakota', rate: 0.0696 },
+  OH: { name: 'Ohio', rate: 0.0724 },
+  OK: { name: 'Oklahoma', rate: 0.0899 },
+  OR: { name: 'Oregon', rate: 0.0000 },
+  PA: { name: 'Pennsylvania', rate: 0.0634 },
+  RI: { name: 'Rhode Island', rate: 0.0700 },
+  SC: { name: 'South Carolina', rate: 0.0744 },
+  SD: { name: 'South Dakota', rate: 0.0611 },
+  TN: { name: 'Tennessee', rate: 0.0955 },
+  TX: { name: 'Texas', rate: 0.0820 },
+  UT: { name: 'Utah', rate: 0.0722 },
+  VT: { name: 'Vermont', rate: 0.0636 },
+  VA: { name: 'Virginia', rate: 0.0577 },
+  WA: { name: 'Washington', rate: 0.0938 },
+  WV: { name: 'West Virginia', rate: 0.0657 },
+  WI: { name: 'Wisconsin', rate: 0.0543 },
+  WY: { name: 'Wyoming', rate: 0.0536 },
+};
 
 interface CheckoutFormProps {
   lobbyId: string;
   role: 'HOST' | 'PARTNER';
+  activePrice: number;
+  userState: string;
   onSuccess: () => void;
 }
 
-function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
+function CheckoutForm({ lobbyId, role, activePrice, userState, onSuccess }: CheckoutFormProps) {
   const stripe = useStripe();
   const elements = useElements();
 
   const [name, setName] = useState('');
   const [street, setStreet] = useState('');
   const [city, setCity] = useState('');
-  const [state, setState] = useState('');
+  const [state, setState] = useState(userState || 'NY');
   const [zip, setZip] = useState('');
   const [phone, setPhone] = useState('');
 
@@ -173,14 +225,17 @@ function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
           </div>
           <div>
             <label className="block text-[11px] font-semibold text-gray-600 mb-1">State</label>
-            <input
-              type="text"
-              placeholder="NY"
-              required
+            <select
               value={state}
               onChange={(e) => setState(e.target.value)}
-              className="w-full p-2.5 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+              className="w-full p-2.5 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold"
+            >
+              {Object.keys(STATE_TAX_RATES).sort().map((st) => (
+                <option key={st} value={st}>
+                  {st} - {STATE_TAX_RATES[st].name}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="block text-[11px] font-semibold text-gray-600 mb-1">ZIP Code</label>
@@ -241,6 +296,32 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
+  // Fully Dynamic Uncapped Retail Price & State Selection
+  const [activePrice, setActivePrice] = useState<number>(120);
+  const [selectedState, setSelectedState] = useState<string>('NY');
+
+  const updatePaymentIntentServer = async (newPrice: number, newState: string) => {
+    if (!lobby || lobby.host_payment_intent_id) return;
+    try {
+      const res = await fetch('/api/create-payment-intent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lobbyId,
+          role,
+          customPrice: newPrice,
+          userState: newState,
+        }),
+      });
+      const intentData = await res.json();
+      if (intentData.clientSecret) {
+        setClientSecret(intentData.clientSecret);
+      }
+    } catch (err) {
+      console.error('Error updating PaymentIntent dynamically:', err);
+    }
+  };
+
   const fetchLobby = async () => {
     try {
       const { data, error } = await supabase
@@ -256,6 +337,8 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
       }
 
       setLobby(data);
+      const initialPrice = data.item_price || 120;
+      setActivePrice(initialPrice);
 
       const isHostStored = typeof window !== 'undefined' && localStorage.getItem(`hosted_${lobbyId}`) === 'true';
       const isHost = isHostStored || !data.host_payment_intent_id;
@@ -272,19 +355,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
       const hasUserPaidForRole = isHost ? hasHostPaid : hasPartnerPaid;
 
       if (!hasUserPaidForRole && data.status !== 'MATCHED') {
-        const res = await fetch('/api/create-payment-intent', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ lobbyId, role: currentRole }),
-        });
-
-        const intentData = await res.json();
-
-        if (intentData.clientSecret) {
-          setClientSecret(intentData.clientSecret);
-        } else if (intentData.error) {
-          console.error('Create PaymentIntent Server Error:', intentData.error);
-        }
+        await updatePaymentIntentServer(initialPrice, selectedState);
       }
     } catch (err: any) {
       console.error('Lobby Fetching Error:', err);
@@ -303,7 +374,9 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'lobbies', filter: `id=eq.${lobbyId}` },
         (payload) => {
-          setLobby(payload.new as LobbyData);
+          const updated = payload.new as LobbyData;
+          setLobby(updated);
+          if (updated.item_price) setActivePrice(updated.item_price);
         }
       )
       .subscribe();
@@ -312,6 +385,17 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
       supabase.removeChannel(channel);
     };
   }, [lobbyId]);
+
+  const handlePriceChange = (val: number) => {
+    const validPrice = Math.max(0.01, val);
+    setActivePrice(validPrice);
+    updatePaymentIntentServer(validPrice, selectedState);
+  };
+
+  const handleStateChange = (st: string) => {
+    setSelectedState(st);
+    updatePaymentIntentServer(activePrice, st);
+  };
 
   const copyInviteLink = () => {
     if (typeof window !== 'undefined') {
@@ -344,12 +428,31 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     );
   }
 
-  // UPDATED MATH: Calculates 5% total platform fee and splits it per user ($3.22 for $128.70 item)
-  const itemPrice = lobby.item_price || 0;
-  const baseShare = itemPrice / 2;
-  const platformFee = (itemPrice * 0.05) / 2;
-  const stripeFee = baseShare * 0.029 + 0.30;
-  const totalShare = baseShare + platformFee + stripeFee;
+  // DYNAMIC MATH CALCULATIONS
+  const dealType = (lobby.deal_type || 'BOGO').toUpperCase();
+  const isBogo50 = dealType === 'BOGO_50' || dealType === 'BUY_1_GET_1_50_OFF';
+
+  // Standard Retail Cost for 2 Items
+  const standardRetailCost2Items = activePrice * 2;
+
+  // Combined Deal Cost (Item 1 + Item 2 Deal)
+  const combinedDealTotal = isBogo50 ? activePrice * 1.5 : activePrice;
+
+  // Base Share Per Person
+  const baseShare = combinedDealTotal / 2;
+
+  // Dynamic 5% Platform Fee calculated STRICTLY on single retail item price, split in half
+  const platformFee = (activePrice * 0.05) / 2;
+
+  // State Tax Calculation
+  const stateInfo = STATE_TAX_RATES[selectedState] || { name: 'Default', rate: 0.07 };
+  const estimatedTax = baseShare * stateInfo.rate;
+
+  // Stripe Processing Fee on user share + tax
+  const stripeFee = (baseShare + estimatedTax) * 0.029 + 0.30;
+
+  // Total Amount Due per person
+  const totalShare = baseShare + platformFee + estimatedTax + stripeFee;
 
   const isHost = role === 'HOST';
   const hasHostPaid = !!lobby.host_payment_intent_id;
@@ -368,9 +471,47 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           </div>
           <div className="text-right">
             <span className="text-xs text-gray-400 block font-semibold">Deal Type</span>
-            <span className="text-sm font-bold text-gray-700">{lobby.deal_type || 'BOGO'}</span>
+            <span className="text-sm font-bold text-emerald-600">
+              {isBogo50 ? 'Buy 1 Get 1 50% Off' : 'Buy 1 Get 1 Free'}
+            </span>
           </div>
         </div>
+
+        {/* Dynamic Retail Price & State Selector */}
+        {!isMatched && !hasHostPaid && (
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-200 space-y-4">
+            <div className="flex justify-between items-center">
+              <label className="text-xs font-extrabold uppercase text-gray-500 tracking-wider">
+                Item Retail Price
+              </label>
+              <div className="flex items-center gap-1">
+                <span className="text-sm font-bold text-gray-400">$</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={activePrice}
+                  onChange={(e) => handlePriceChange(parseFloat(e.target.value) || 0)}
+                  className="w-28 p-1.5 text-right font-black text-lg border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            <input
+              type="range"
+              min="5"
+              max="1000"
+              step="1"
+              value={activePrice <= 1000 ? activePrice : 1000}
+              onChange={(e) => handlePriceChange(parseFloat(e.target.value) || 0)}
+              className="w-full accent-blue-600 cursor-pointer"
+            />
+            <div className="flex justify-between text-[11px] text-gray-400 font-semibold">
+              <span>$5</span>
+              <span>$500</span>
+              <span>$1,000+</span>
+            </div>
+          </div>
+        )}
 
         {isMatched ? (
           <div className="bg-emerald-600 text-white p-6 rounded-3xl shadow-lg space-y-2 text-center">
@@ -382,27 +523,58 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           </div>
         ) : (
           <div className="bg-white p-6 rounded-3xl shadow-md border border-gray-200 space-y-4">
-            <h3 className="text-base font-extrabold border-b border-gray-100 pb-3">
-              Price Breakdown (Per Person)
+            <h3 className="text-base font-extrabold border-b border-gray-100 pb-3 flex justify-between items-center">
+              <span>Price Breakdown (Per Person)</span>
+              <span className="text-xs font-normal text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-semibold">
+                Saves ${ (standardRetailCost2Items - combinedDealTotal).toFixed(2) } total
+              </span>
             </h3>
-            <div className="space-y-2 text-sm">
+
+            <div className="space-y-2.5 text-sm">
               <div className="flex justify-between text-gray-600">
-                <span>Original Item Price</span>
-                <span className="font-semibold">${itemPrice.toFixed(2)}</span>
+                <span>Standard Retail Cost (2 Items)</span>
+                <span className="font-semibold text-gray-400 line-through">
+                  ${standardRetailCost2Items.toFixed(2)}
+                </span>
               </div>
               <div className="flex justify-between text-gray-600">
-                <span>50/50 Base Share</span>
+                <span>Item Retail Price (1 Item)</span>
+                <span className="font-semibold">${activePrice.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-gray-600">
+                <span>50/50 Base Share ({isBogo50 ? 'BOGO 50% Off' : 'BOGO Free'})</span>
                 <span className="font-semibold">${baseShare.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-gray-600">
-                <span>Platform Fee (5% Split)</span>
+                <span>Platform Fee (5% Retail Split)</span>
                 <span className="font-semibold">+${platformFee.toFixed(2)}</span>
               </div>
+
+              {/* 50 States Dynamic Tax Dropdown */}
+              <div className="flex justify-between items-center text-gray-600">
+                <div className="flex items-center gap-1.5">
+                  <span>Est. Sales Tax</span>
+                  <select
+                    value={selectedState}
+                    onChange={(e) => handleStateChange(e.target.value)}
+                    className="text-xs bg-gray-100 border border-gray-300 rounded px-1.5 py-0.5 font-bold text-gray-700"
+                  >
+                    {Object.keys(STATE_TAX_RATES).sort().map((st) => (
+                      <option key={st} value={st}>
+                        {st} ({(STATE_TAX_RATES[st].rate * 100).toFixed(2)}%)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <span className="font-semibold">+${estimatedTax.toFixed(2)}</span>
+              </div>
+
               <div className="flex justify-between text-gray-600">
                 <span>Stripe Processing Fee</span>
                 <span className="font-semibold">+${stripeFee.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-base font-black text-gray-900 pt-2 border-t border-gray-100">
+
+              <div className="flex justify-between text-base font-black text-gray-900 pt-3 border-t border-gray-100">
                 <span>Total Amount Due</span>
                 <span className="text-blue-600">${totalShare.toFixed(2)}</span>
               </div>
@@ -436,7 +608,13 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
                 </h3>
                 {clientSecret ? (
                   <Elements stripe={stripePromise} options={{ clientSecret }}>
-                    <CheckoutForm lobbyId={lobbyId} role={role} onSuccess={fetchLobby} />
+                    <CheckoutForm
+                      lobbyId={lobbyId}
+                      role={role}
+                      activePrice={activePrice}
+                      userState={selectedState}
+                      onSuccess={fetchLobby}
+                    />
                   </Elements>
                 ) : (
                   <div className="py-6 text-center text-xs font-semibold text-gray-500">
