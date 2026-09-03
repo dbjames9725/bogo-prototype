@@ -58,13 +58,14 @@ const STATE_TAX_RATES: Record<string, { name: string; rate: number }> = {
 };
 
 export default function HomePage() {
+  const [itemName, setItemName] = useState<string>('Premium Noise-Canceling Headphones');
   const [activePrice, setActivePrice] = useState<number>(120);
   const [dealType, setDealType] = useState<'BOGO_FREE' | 'BOGO_50'>('BOGO_FREE');
   const [selectedState, setSelectedState] = useState<string>('NY');
   const [includeTax, setIncludeTax] = useState<boolean>(false);
 
   // -------------------------------------------------------------
-  // DYNAMIC MATH ENGINE
+  // ACCURATE PRE-TAX MATH ENGINE
   // -------------------------------------------------------------
   const itemPrice = Math.max(0.01, activePrice);
 
@@ -89,37 +90,64 @@ export default function HomePage() {
   const totalAmountDue = yourSplitShare + platformFee + estimatedTax + stripeFee;
 
   return (
-    <main className="min-h-screen bg-gray-50 py-12 px-4 font-sans text-gray-900">
+    <main className="min-h-screen bg-neutral-950 text-white py-12 px-4 font-sans antialiased">
       <div className="max-w-xl mx-auto space-y-8">
        
-        {/* Simulator Card */}
-        <div className="bg-white p-6 rounded-3xl shadow-md border border-gray-200 space-y-6">
-          <div className="border-b border-gray-100 pb-4">
-            <div className="flex items-center gap-2 text-xs font-extrabold uppercase text-blue-600 tracking-wider">
+        {/* Header Section */}
+        <div className="text-center space-y-2">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-semibold">
+            <span>⚡ BOGO Split Platform Engine</span>
+          </div>
+          <h1 className="text-3xl font-black tracking-tight text-white sm:text-4xl">
+            Split Any Deal 50/50
+          </h1>
+          <p className="text-sm text-neutral-400">
+            Calculate exact split shares, fees, and state taxes in real time.
+          </p>
+        </div>
+
+        {/* Simulator Card (Dark Theme Restored) */}
+        <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-2xl space-y-6">
+          <div className="border-b border-neutral-800 pb-4">
+            <div className="flex items-center gap-2 text-xs font-extrabold uppercase text-blue-400 tracking-wider">
               <span>🧮 Interactive Savings Simulator</span>
             </div>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-neutral-400 mt-1">
               Adjust retail price & deal type to project your personal savings.
             </p>
           </div>
 
           {/* Controls Section */}
-          <div className="space-y-4">
+          <div className="space-y-5">
+            {/* Product Name Input Field */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-neutral-300 uppercase tracking-wider block">
+                Product Name / Item Description
+              </label>
+              <input
+                type="text"
+                placeholder="Enter product title..."
+                value={itemName}
+                onChange={(e) => setItemName(e.target.value)}
+                className="w-full p-3 bg-neutral-950 border border-neutral-800 rounded-xl text-sm font-semibold text-white placeholder-neutral-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
             {/* Retail Price Slider & Input */}
             <div className="space-y-2">
               <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full">
                   Save {isBogo50 ? '25%' : '50%'} Per Item
                 </span>
                 <div className="flex items-center gap-1">
-                  <span className="text-sm font-bold text-gray-400">Item Retail Price $</span>
+                  <span className="text-sm font-bold text-neutral-400">Item Retail Price $</span>
                   <input
                     type="number"
                     step="0.01"
                     min="0.01"
                     value={activePrice}
                     onChange={(e) => setActivePrice(parseFloat(e.target.value) || 0)}
-                    className="w-28 p-1.5 text-right font-black text-lg border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-28 p-1.5 text-right font-black text-lg bg-neutral-950 border border-neutral-800 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
@@ -130,9 +158,9 @@ export default function HomePage() {
                 step="1"
                 value={activePrice <= 500 ? activePrice : 500}
                 onChange={(e) => setActivePrice(parseFloat(e.target.value) || 0)}
-                className="w-full accent-blue-600 cursor-pointer"
+                className="w-full accent-blue-500 cursor-pointer"
               />
-              <div className="flex justify-between text-[11px] text-gray-400 font-semibold">
+              <div className="flex justify-between text-[11px] text-neutral-500 font-semibold">
                 <span>$10</span>
                 <span>$250</span>
                 <span>$500+</span>
@@ -141,17 +169,17 @@ export default function HomePage() {
 
             {/* Deal Mechanics Buttons */}
             <div className="space-y-2">
-              <label className="text-xs font-bold text-gray-700 uppercase tracking-wider block">
+              <label className="text-xs font-bold text-neutral-300 uppercase tracking-wider block">
                 Select Deal Mechanics
               </label>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => setDealType('BOGO_FREE')}
-                  className={`py-2.5 px-3 rounded-xl text-xs font-extrabold border transition cursor-pointer ${
+                  className={`py-3 px-3 rounded-xl text-xs font-extrabold border transition cursor-pointer ${
                     dealType === 'BOGO_FREE'
-                      ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                      : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+                      ? 'bg-blue-600 text-white border-blue-500 shadow-md'
+                      : 'bg-neutral-950 text-neutral-400 border-neutral-800 hover:bg-neutral-800'
                   }`}
                 >
                   Buy 1 Get 1 FREE
@@ -159,10 +187,10 @@ export default function HomePage() {
                 <button
                   type="button"
                   onClick={() => setDealType('BOGO_50')}
-                  className={`py-2.5 px-3 rounded-xl text-xs font-extrabold border transition cursor-pointer ${
+                  className={`py-3 px-3 rounded-xl text-xs font-extrabold border transition cursor-pointer ${
                     dealType === 'BOGO_50'
-                      ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                      : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+                      ? 'bg-blue-600 text-white border-blue-500 shadow-md'
+                      : 'bg-neutral-950 text-neutral-400 border-neutral-800 hover:bg-neutral-800'
                   }`}
                 >
                   Buy 1 Get 1 50% OFF
@@ -172,48 +200,48 @@ export default function HomePage() {
           </div>
 
           {/* Breakdown Output Table */}
-          <div className="bg-gray-50 p-5 rounded-2xl border border-gray-200 space-y-3 text-sm">
-            <div className="flex justify-between text-gray-600">
+          <div className="bg-neutral-950 p-5 rounded-2xl border border-neutral-800 space-y-3 text-sm">
+            <div className="flex justify-between text-neutral-400">
               <span>BOGO Promo Total (Pre-tax)</span>
-              <span className="font-semibold text-gray-900">
+              <span className="font-semibold text-white">
                 ${bogoPromoTotal.toFixed(2)}
               </span>
             </div>
 
-            <div className="flex justify-between text-gray-600 pt-2 border-t border-gray-200">
+            <div className="flex justify-between text-neutral-400 pt-2 border-t border-neutral-800">
               <div>
-                <span className="block font-bold text-gray-900">Your Split Share</span>
-                <span className="text-[11px] text-gray-500">You pay only this amount (Pre-tax)</span>
+                <span className="block font-bold text-white">Your Split Share</span>
+                <span className="text-[11px] text-neutral-500">You pay only this amount (Pre-tax)</span>
               </div>
-              <span className="font-black text-emerald-600 text-lg">
+              <span className="font-black text-emerald-400 text-lg">
                 ${yourSplitShare.toFixed(2)}
               </span>
             </div>
 
-            <div className="flex justify-between text-xs text-gray-500">
+            <div className="flex justify-between text-xs text-neutral-400">
               <span>Platform Fee (5% Retail Split)</span>
-              <span className="font-semibold">+${platformFee.toFixed(2)}</span>
+              <span className="font-semibold text-neutral-300">+${platformFee.toFixed(2)}</span>
             </div>
 
             {/* Optional Tax Toggle & State Selector */}
-            <div className="pt-2 border-t border-gray-200 space-y-2">
+            <div className="pt-2 border-t border-neutral-800 space-y-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <input
                     type="checkbox"
-                    id="pageTaxToggle"
+                    id="pageTaxToggleDark"
                     checked={includeTax}
                     onChange={(e) => setIncludeTax(e.target.checked)}
-                    className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                    className="w-4 h-4 text-blue-600 bg-neutral-900 border-neutral-700 rounded focus:ring-blue-500 cursor-pointer"
                   />
-                  <label htmlFor="pageTaxToggle" className="text-xs font-bold text-gray-700 cursor-pointer">
+                  <label htmlFor="pageTaxToggleDark" className="text-xs font-bold text-neutral-300 cursor-pointer">
                     Add State Sales Tax
                   </label>
                 </div>
                 <select
                   value={selectedState}
                   onChange={(e) => setSelectedState(e.target.value)}
-                  className="text-xs bg-white border border-gray-300 rounded px-2 py-1 font-bold text-gray-800"
+                  className="text-xs bg-neutral-900 border border-neutral-800 rounded px-2 py-1 font-bold text-white focus:outline-none"
                 >
                   {Object.keys(STATE_TAX_RATES).sort().map((st) => (
                     <option key={st} value={st}>
@@ -224,29 +252,29 @@ export default function HomePage() {
               </div>
 
               {includeTax && (
-                <div className="flex justify-between text-xs text-gray-600">
+                <div className="flex justify-between text-xs text-neutral-400">
                   <span>Estimated {selectedState} Sales Tax</span>
-                  <span className="font-semibold">+${estimatedTax.toFixed(2)}</span>
+                  <span className="font-semibold text-neutral-300">+${estimatedTax.toFixed(2)}</span>
                 </div>
               )}
             </div>
 
-            <div className="flex justify-between text-xs text-gray-500">
+            <div className="flex justify-between text-xs text-neutral-400">
               <span>Stripe Processing Fee</span>
-              <span className="font-semibold">+${stripeFee.toFixed(2)}</span>
+              <span className="font-semibold text-neutral-300">+${stripeFee.toFixed(2)}</span>
             </div>
 
             {/* Total Amount Due */}
-            <div className="flex justify-between text-base font-black text-gray-900 pt-3 border-t border-gray-300">
+            <div className="flex justify-between text-base font-black text-white pt-3 border-t border-neutral-800">
               <span>Total Amount Due</span>
-              <span className="text-blue-600">${totalAmountDue.toFixed(2)}</span>
+              <span className="text-blue-400">${totalAmountDue.toFixed(2)}</span>
             </div>
           </div>
 
           {/* Action CTA */}
           <button
             type="button"
-            className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl shadow-lg transition flex items-center justify-center gap-2 cursor-pointer text-base"
+            className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-xl shadow-lg transition flex items-center justify-center gap-2 cursor-pointer text-base"
           >
             <span>Lock In This Split</span>
             <span>➔</span>
