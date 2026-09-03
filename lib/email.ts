@@ -1,7 +1,5 @@
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
 export interface OrderEmailProps {
   lobbyId: string;
   itemName: string;
@@ -13,12 +11,16 @@ export interface OrderEmailProps {
 }
 
 export async function sendMatchNotificationEmail(data: OrderEmailProps) {
+  const apiKey = process.env.RESEND_API_KEY;
   const merchantEmail = process.env.MERCHANT_NOTIFICATION_EMAIL;
 
-  if (!merchantEmail || !process.env.RESEND_API_KEY) {
+  if (!apiKey || !merchantEmail) {
     console.warn('Skipping email notification: RESEND_API_KEY or MERCHANT_NOTIFICATION_EMAIL not configured.');
     return;
   }
+
+  // Instantiate Resend lazily at execution time, avoiding build-time evaluation issues
+  const resend = new Resend(apiKey);
 
   const { lobbyId, itemName, itemPrice, userAAddress, userBAddress, userAVariant, userBVariant } = data;
 
@@ -82,4 +84,3 @@ export async function sendMatchNotificationEmail(data: OrderEmailProps) {
     html: htmlContent,
   });
 }
-
