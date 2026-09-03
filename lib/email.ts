@@ -2,7 +2,7 @@ import { Resend } from 'resend';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-interface OrderEmailProps {
+export interface OrderEmailProps {
   lobbyId: string;
   itemName: string;
   itemPrice: number;
@@ -44,12 +44,11 @@ export async function sendMatchNotificationEmail(data: OrderEmailProps) {
           <div class="header">
             <span class="badge">🎉 Action Required: Ship BOGO Split Order</span>
             <div class="title">Match Confirmed for ${itemName}</div>
-            <p style="font-size: 13px; color: #6b7280; margin: 0;">Lobby ID: ${lobbyId} | Original Item Price: $${itemPrice.toFixed(2)}</p>
+            <p style="font-size: 13px; color: #6b7280; margin: 0;">Lobby ID: ${lobbyId} | Original Item Price: $${Number(itemPrice || 0).toFixed(2)}</p>
           </div>
 
           <p style="font-size: 14px;">Both payment holds have been captured successfully. Please fulfill and ship the two split items to the addresses below:</p>
 
-          <!-- Host Address -->
           <div class="card">
             <div class="card-header">👑 Host (Buyer 1) Shipping Address</div>
             <div class="address-line"><strong>Name:</strong> ${userAAddress?.name || 'N/A'}</div>
@@ -59,7 +58,6 @@ export async function sendMatchNotificationEmail(data: OrderEmailProps) {
             ${userAVariant ? `<div class="variant">Options Selected: ${JSON.stringify(userAVariant)}</div>` : ''}
           </div>
 
-          <!-- Partner Address -->
           <div class="card">
             <div class="card-header">🤝 Partner (Buyer 2) Shipping Address</div>
             <div class="address-line"><strong>Name:</strong> ${userBAddress?.name || 'N/A'}</div>
@@ -84,3 +82,4 @@ export async function sendMatchNotificationEmail(data: OrderEmailProps) {
     html: htmlContent,
   });
 }
+
