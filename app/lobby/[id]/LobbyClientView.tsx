@@ -183,92 +183,92 @@ function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="bg-gray-50 p-4 rounded-xl space-y-3 border border-gray-200">
-        <h4 className="text-xs font-bold uppercase text-gray-500 tracking-wider">
+      <div className="bg-neutral-900 p-4 rounded-xl space-y-3 border border-neutral-800">
+        <h4 className="text-xs font-bold uppercase text-neutral-400 tracking-wider">
           Shipping & Billing Address
         </h4>
         <div>
-          <label className="block text-[11px] font-semibold text-gray-600 mb-1">Full Name</label>
+          <label className="block text-[11px] font-semibold text-neutral-300 mb-1">Full Name</label>
           <input
             type="text"
             placeholder="Jane Doe"
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="w-full p-2.5 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
         <div>
-          <label className="block text-[11px] font-semibold text-gray-600 mb-1">Street Address</label>
+          <label className="block text-[11px] font-semibold text-neutral-300 mb-1">Street Address</label>
           <input
             type="text"
             placeholder="123 Main St, Apt 4B"
             required
             value={street}
             onChange={(e) => setStreet(e.target.value)}
-            className="w-full p-2.5 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
         <div className="grid grid-cols-3 gap-2">
           <div>
-            <label className="block text-[11px] font-semibold text-gray-600 mb-1">City</label>
+            <label className="block text-[11px] font-semibold text-neutral-300 mb-1">City</label>
             <input
               type="text"
               placeholder="New York"
               required
               value={city}
               onChange={(e) => setCity(e.target.value)}
-              className="w-full p-2.5 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <div>
-            <label className="block text-[11px] font-semibold text-gray-600 mb-1">State</label>
+            <label className="block text-[11px] font-semibold text-neutral-300 mb-1">State</label>
             <select
               value={state}
               onChange={(e) => setState(e.target.value)}
-              className="w-full p-2.5 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold"
+              className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {Object.keys(STATE_TAX_RATES).sort().map((st) => (
                 <option key={st} value={st}>
-                  {st} - {STATE_TAX_RATES[st].name}
+                  {st}
                 </option>
               ))}
             </select>
           </div>
           <div>
-            <label className="block text-[11px] font-semibold text-gray-600 mb-1">ZIP Code</label>
+            <label className="block text-[11px] font-semibold text-neutral-300 mb-1">ZIP Code</label>
             <input
               type="text"
               placeholder="10001"
               required
               value={zip}
               onChange={(e) => setZip(e.target.value)}
-              className="w-full p-2.5 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
         </div>
         <div>
-          <label className="block text-[11px] font-semibold text-gray-600 mb-1">Phone Number</label>
+          <label className="block text-[11px] font-semibold text-neutral-300 mb-1">Phone Number</label>
           <input
             type="tel"
             placeholder="(555) 000-0000"
             required
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            className="w-full p-2.5 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
       </div>
 
-      <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
-        <h4 className="text-xs font-bold uppercase text-gray-500 tracking-wider mb-3">
+      <div className="bg-neutral-900 p-4 rounded-xl border border-neutral-800">
+        <h4 className="text-xs font-bold uppercase text-neutral-400 tracking-wider mb-3">
           Payment Method
         </h4>
         <PaymentElement />
       </div>
 
       {errorMessage && (
-        <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-lg font-semibold">
+        <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs rounded-lg font-semibold">
           ⚠️ {errorMessage}
         </div>
       )}
@@ -276,7 +276,7 @@ function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
       <button
         type="submit"
         disabled={!stripe || loading}
-        className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-lg transition disabled:opacity-50 text-base cursor-pointer"
+        className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg transition disabled:opacity-50 text-base cursor-pointer"
       >
         {loading
           ? 'Authorizing Hold...'
@@ -294,34 +294,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  // Dynamic Retail Price, Tax Toggle & State Selector
-  const [activePrice, setActivePrice] = useState<number>(115);
-  const [selectedState, setSelectedState] = useState<string>('NY');
-  const [includeTax, setIncludeTax] = useState<boolean>(false);
-
-  const updatePaymentIntentServer = async (newPrice: number, newState: string, withTax: boolean) => {
-    if (!lobby || lobby.host_payment_intent_id) return;
-    try {
-      const res = await fetch('/api/create-payment-intent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          lobbyId,
-          role,
-          customPrice: newPrice,
-          userState: newState,
-          includeTax: withTax,
-        }),
-      });
-      const intentData = await res.json();
-      if (intentData.clientSecret) {
-        setClientSecret(intentData.clientSecret);
-      }
-    } catch (err) {
-      console.error('Error updating PaymentIntent dynamically:', err);
-    }
-  };
-
   const fetchLobby = async () => {
     try {
       const { data, error } = await supabase
@@ -337,25 +309,36 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
       }
 
       setLobby(data);
-      const initialPrice = data.item_price || 115;
-      setActivePrice(initialPrice);
 
+      // STRICT ROLE DETERMINATION:
+      // If host_payment_intent_id is missing, current user MUST be Host.
+      // If host_payment_intent_id exists AND partner_payment_intent_id is missing, current user MUST be Partner.
       const isHostStored = typeof window !== 'undefined' && localStorage.getItem(`hosted_${lobbyId}`) === 'true';
-      const isHost = isHostStored || !data.host_payment_intent_id;
+      const isHost = isHostStored && !data.host_payment_intent_id;
       const currentRole = isHost ? 'HOST' : 'PARTNER';
-
-      if (isHost && typeof window !== 'undefined') {
-        localStorage.setItem(`hosted_${lobbyId}`, 'true');
-      }
 
       setRole(currentRole);
 
-      const hasHostPaid = !!data.host_payment_intent_id;
-      const hasPartnerPaid = !!data.partner_payment_intent_id;
-      const hasUserPaidForRole = isHost ? hasHostPaid : hasPartnerPaid;
+      const hasUserPaidForRole = currentRole === 'HOST' ? !!data.host_payment_intent_id : !!data.partner_payment_intent_id;
 
       if (!hasUserPaidForRole && data.status !== 'MATCHED') {
-        await updatePaymentIntentServer(initialPrice, selectedState, includeTax);
+        const res = await fetch('/api/create-payment-intent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            lobbyId,
+            role: currentRole,
+          }),
+        });
+
+        const intentData = await res.json();
+
+        if (intentData.clientSecret) {
+          setClientSecret(intentData.clientSecret);
+        } else if (intentData.error) {
+          console.error('Create PaymentIntent Server Error:', intentData.error);
+          setFetchError(intentData.error);
+        }
       }
     } catch (err: any) {
       console.error('Lobby Fetching Error:', err);
@@ -376,7 +359,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
         (payload) => {
           const updated = payload.new as LobbyData;
           setLobby(updated);
-          if (updated.item_price) setActivePrice(updated.item_price);
         }
       )
       .subscribe();
@@ -385,22 +367,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
       supabase.removeChannel(channel);
     };
   }, [lobbyId]);
-
-  const handlePriceChange = (val: number) => {
-    const validPrice = Math.max(0.01, val);
-    setActivePrice(validPrice);
-    updatePaymentIntentServer(validPrice, selectedState, includeTax);
-  };
-
-  const handleStateChange = (st: string) => {
-    setSelectedState(st);
-    updatePaymentIntentServer(activePrice, st, includeTax);
-  };
-
-  const handleTaxToggle = (checked: boolean) => {
-    setIncludeTax(checked);
-    updatePaymentIntentServer(activePrice, selectedState, checked);
-  };
 
   const copyInviteLink = () => {
     if (typeof window !== 'undefined') {
@@ -412,9 +378,9 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-500 font-sans">
-        <div className="flex items-center gap-3 bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-          <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center bg-neutral-950 text-neutral-400 font-sans">
+        <div className="flex items-center gap-3 bg-neutral-900 p-6 rounded-2xl shadow-sm border border-neutral-800">
+          <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
           <span className="font-semibold text-sm">Loading BOGO Split Lobby...</span>
         </div>
       </div>
@@ -423,41 +389,24 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
 
   if (fetchError || !lobby) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4 font-sans text-gray-900">
-        <div className="max-w-md bg-white p-8 rounded-3xl shadow-md border border-gray-200 text-center space-y-4">
+      <div className="min-h-screen flex items-center justify-center bg-neutral-950 p-4 font-sans text-white">
+        <div className="max-w-md bg-neutral-900 p-8 rounded-3xl shadow-md border border-neutral-800 text-center space-y-4">
           <div className="text-4xl">⚠️</div>
-          <h2 className="text-xl font-extrabold">Lobby Not Found</h2>
-          <p className="text-xs text-gray-500">{fetchError || 'Unable to locate this lobby.'}</p>
+          <h2 className="text-xl font-extrabold">Lobby Issue</h2>
+          <p className="text-xs text-neutral-400">{fetchError || 'Unable to locate this lobby.'}</p>
         </div>
       </div>
     );
   }
 
-  // DYNAMIC MATH ENGINE
+  // MATH ENGINE
+  const itemPrice = lobby.item_price || 0;
   const dealType = (lobby.deal_type || 'BOGO').toUpperCase();
   const isBogo50 = dealType === 'BOGO_50' || dealType === 'BUY_1_GET_1_50_OFF';
 
-  // 1. Standard Retail Cost (2 Items) - Directly reflects Item Retail Price
-  const standardRetailCost2Items = activePrice;
-
-  // 2. BOGO Promo Total (Pre-tax total for both items)
-  const bogoPromoTotal = isBogo50 ? activePrice * 1.5 : activePrice;
-
-  // 3. Your Split Share (Pre-tax base share per person)
+  const bogoPromoTotal = isBogo50 ? itemPrice * 1.5 : itemPrice;
   const baseShare = bogoPromoTotal / 2;
-
-  // 4. Platform Fee = 5% of single item retail price split in half
-  const platformFee = (activePrice * 0.05) / 2;
-
-  // 5. Dynamic State Tax (Only applied if includeTax box is checked)
-  const stateInfo = STATE_TAX_RATES[selectedState] || { name: 'Default', rate: 0.07 };
-  const estimatedTax = includeTax ? baseShare * stateInfo.rate : 0;
-
-  // 6. Stripe Processing Fee
-  const stripeFee = (baseShare + estimatedTax) * 0.029 + 0.30;
-
-  // 7. Total Amount Due per person
-  const totalShare = baseShare + platformFee + estimatedTax + stripeFee;
+  const platformFee = (itemPrice * 0.05) / 2;
 
   const isHost = role === 'HOST';
   const hasHostPaid = !!lobby.host_payment_intent_id;
@@ -465,58 +414,22 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const isMatched = lobby.status === 'MATCHED' && hasHostPaid && hasPartnerPaid;
 
   return (
-    <div className="min-h-screen bg-gray-100 py-8 px-4 font-sans text-gray-900">
+    <div className="min-h-screen bg-neutral-950 text-white py-8 px-4 font-sans">
       <div className="max-w-xl mx-auto space-y-6">
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 flex items-center justify-between">
+        <div className="bg-neutral-900 p-5 rounded-2xl border border-neutral-800 flex items-center justify-between">
           <div>
-            <span className="text-xs font-extrabold uppercase tracking-wider text-blue-600 bg-blue-50 px-2.5 py-1 rounded-md">
+            <span className="text-xs font-extrabold uppercase tracking-wider text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2.5 py-1 rounded-md">
               {isHost ? '👑 HOST DASHBOARD' : '🤝 PARTNER DEAL INVITATION'}
             </span>
-            <h2 className="text-xl font-extrabold mt-2 text-gray-900">{lobby.item_name}</h2>
+            <h2 className="text-xl font-extrabold mt-2 text-white">{lobby.item_name}</h2>
           </div>
           <div className="text-right">
-            <span className="text-xs text-gray-400 block font-semibold">Deal Type</span>
-            <span className="text-sm font-bold text-emerald-600">
+            <span className="text-xs text-neutral-500 block font-semibold">Deal Type</span>
+            <span className="text-sm font-bold text-emerald-400">
               {isBogo50 ? 'Buy 1 Get 1 50% Off' : 'Buy 1 Get 1 Free'}
             </span>
           </div>
         </div>
-
-        {/* Dynamic Retail Price & Simulator Controls */}
-        {!isMatched && !hasHostPaid && (
-          <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-200 space-y-4">
-            <div className="flex justify-between items-center">
-              <label className="text-xs font-extrabold uppercase text-gray-500 tracking-wider">
-                Interactive Savings Simulator (Item Retail Price)
-              </label>
-              <div className="flex items-center gap-1">
-                <span className="text-sm font-bold text-gray-400">$</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  value={activePrice}
-                  onChange={(e) => handlePriceChange(parseFloat(e.target.value) || 0)}
-                  className="w-28 p-1.5 text-right font-black text-lg border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </div>
-            <input
-              type="range"
-              min="5"
-              max="1000"
-              step="1"
-              value={activePrice <= 1000 ? activePrice : 1000}
-              onChange={(e) => handlePriceChange(parseFloat(e.target.value) || 0)}
-              className="w-full accent-blue-600 cursor-pointer"
-            />
-            <div className="flex justify-between text-[11px] text-gray-400 font-semibold">
-              <span>$5</span>
-              <span>$500</span>
-              <span>$1,000+</span>
-            </div>
-          </div>
-        )}
 
         {isMatched ? (
           <div className="bg-emerald-600 text-white p-6 rounded-3xl shadow-lg space-y-2 text-center">
@@ -527,90 +440,39 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
             </p>
           </div>
         ) : (
-          <div className="bg-white p-6 rounded-3xl shadow-md border border-gray-200 space-y-4">
-            <h3 className="text-base font-extrabold border-b border-gray-100 pb-3 flex justify-between items-center">
+          <div className="bg-neutral-900 p-6 rounded-3xl border border-neutral-800 space-y-4">
+            <h3 className="text-base font-extrabold border-b border-neutral-800 pb-3 flex justify-between items-center text-white">
               <span>Price Breakdown (Per Person)</span>
             </h3>
 
             <div className="space-y-2.5 text-sm">
-              <div className="flex justify-between text-gray-600">
-                <span>Standard Retail Cost (2 Items)</span>
-                <span className="font-semibold text-gray-900">
-                  ${standardRetailCost2Items.toFixed(2)}
-                </span>
+              <div className="flex justify-between text-neutral-400">
+                <span>BOGO Promo Total (Pre-tax)</span>
+                <span className="font-semibold text-white">${bogoPromoTotal.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-gray-600">
-                <span>BOGO Promo Total (2 Items, Pre-tax)</span>
-                <span className="font-semibold text-gray-900">${bogoPromoTotal.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-gray-600">
+              <div className="flex justify-between text-neutral-400">
                 <span>Your Split Share (Pre-tax)</span>
-                <span className="font-bold text-emerald-700">${baseShare.toFixed(2)}</span>
+                <span className="font-bold text-emerald-400">${baseShare.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-gray-600">
+              <div className="flex justify-between text-neutral-400">
                 <span>Platform Fee (5% Retail Split)</span>
-                <span className="font-semibold">+${platformFee.toFixed(2)}</span>
-              </div>
-
-              {/* State Selection & Add Tax Checkbox */}
-              <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="addTaxToggle"
-                      checked={includeTax}
-                      onChange={(e) => handleTaxToggle(e.target.checked)}
-                      className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
-                    />
-                    <label htmlFor="addTaxToggle" className="text-xs font-bold text-gray-700 cursor-pointer">
-                      Add State Sales Tax
-                    </label>
-                  </div>
-                  <select
-                    value={selectedState}
-                    onChange={(e) => handleStateChange(e.target.value)}
-                    className="text-xs bg-white border border-gray-300 rounded px-2 py-1 font-bold text-gray-800"
-                  >
-                    {Object.keys(STATE_TAX_RATES).sort().map((st) => (
-                      <option key={st} value={st}>
-                        {st} ({(STATE_TAX_RATES[st].rate * 100).toFixed(2)}%)
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {includeTax && (
-                  <div className="flex justify-between text-xs text-gray-600 pt-1 border-t border-gray-200">
-                    <span>Estimated {selectedState} Sales Tax</span>
-                    <span className="font-semibold">+${estimatedTax.toFixed(2)}</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex justify-between text-gray-600">
-                <span>Stripe Processing Fee</span>
-                <span className="font-semibold">+${stripeFee.toFixed(2)}</span>
-              </div>
-
-              <div className="flex justify-between text-base font-black text-gray-900 pt-3 border-t border-gray-100">
-                <span>Total Amount Due</span>
-                <span className="text-blue-600">${totalShare.toFixed(2)}</span>
+                <span className="font-semibold text-neutral-300">+${platformFee.toFixed(2)}</span>
               </div>
             </div>
           </div>
         )}
 
         {isHost && hasHostPaid && !isMatched && (
-          <div className="bg-blue-50 border border-blue-200 p-6 rounded-3xl space-y-3">
-            <div className="flex items-center gap-2 text-blue-900 font-bold text-sm">
+          <div className="bg-blue-500/10 border border-blue-500/20 p-6 rounded-3xl space-y-3">
+            <div className="flex items-center gap-2 text-blue-400 font-bold text-sm">
               <span>🔗 Share Invite Link With a Partner</span>
             </div>
-            <p className="text-xs text-blue-700">
+            <p className="text-xs text-blue-300">
               Your payment hold is placed! Share this link with a friend or social group to split the BOGO deal.
             </p>
             <button
               onClick={copyInviteLink}
-              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-sm transition shadow-sm cursor-pointer"
+              className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-sm transition shadow-sm cursor-pointer"
             >
               {copied ? '✓ Invite Link Copied!' : 'Copy Invite Link'}
             </button>
@@ -618,10 +480,10 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
         )}
 
         {!isMatched && (
-          <div className="bg-white p-6 rounded-3xl shadow-md border border-gray-200 space-y-4">
+          <div className="bg-neutral-900 p-6 rounded-3xl border border-neutral-800 space-y-4">
             {(isHost && !hasHostPaid) || (!isHost && !hasPartnerPaid) ? (
               <>
-                <h3 className="text-lg font-extrabold text-gray-900 border-b border-gray-100 pb-3">
+                <h3 className="text-lg font-extrabold text-white border-b border-neutral-800 pb-3">
                   {isHost ? 'Authorize Host Payment Hold' : 'Join Deal & Authorize Your Split Share'}
                 </h3>
                 {clientSecret ? (
@@ -633,15 +495,15 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
                     />
                   </Elements>
                 ) : (
-                  <div className="py-6 text-center text-xs font-semibold text-gray-500">
+                  <div className="py-6 text-center text-xs font-semibold text-neutral-500">
                     Preparing secure Stripe checkout...
                   </div>
                 )}
               </>
             ) : (
-              <div className="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl text-xs font-semibold text-center space-y-1">
+              <div className="p-4 bg-amber-500/10 border border-amber-500/20 text-amber-300 rounded-2xl text-xs font-semibold text-center space-y-1">
                 <div>⏳ Waiting for {isHost ? 'Partner' : 'Host'} to authorize their share...</div>
-                <div className="text-[11px] font-normal text-amber-700">
+                <div className="text-[11px] font-normal text-amber-400">
                   Neither card is charged until both pre-authorizations succeed.
                 </div>
               </div>
