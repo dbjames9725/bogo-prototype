@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import Link from 'next/link';
 
 // Complete 50 States + DC Average Combined Sales Tax Rates
 const STATE_TAX_RATES: Record<string, { name: string; rate: number }> = {
@@ -65,34 +64,28 @@ export default function HomePage() {
   const [includeTax, setIncludeTax] = useState<boolean>(false);
 
   // -------------------------------------------------------------
-  // ACCURATE PRE-TAX MATH ENGINE
+  // DYNAMIC MATH ENGINE
   // -------------------------------------------------------------
   const itemPrice = Math.max(0.01, activePrice);
 
-  // 1. Standard Retail Cost for TWO full-priced items ($120.00 x 2 = $240.00)
-  const standardRetailCost2Items = itemPrice * 2;
-
-  // 2. BOGO Promo Total (Pre-tax total for both items: $120.00 for BOGO Free)
+  // 1. BOGO Promo Total (Pre-tax total for both items: $120.00 for BOGO Free)
   const isBogo50 = dealType === 'BOGO_50';
   const bogoPromoTotal = isBogo50 ? itemPrice * 1.5 : itemPrice;
 
-  // 3. Your Split Share (Pre-tax base share per person: $120.00 / 2 = $60.00)
+  // 2. Your Split Share (Pre-tax base share per person: $120.00 / 2 = $60.00)
   const yourSplitShare = bogoPromoTotal / 2;
 
-  // 4. Platform Fee (5% of single retail item price split in half: $120 * 0.05 / 2 = $3.00)
+  // 3. Platform Fee (5% of single retail item price split in half: $120 * 0.05 / 2 = $3.00)
   const platformFee = (itemPrice * 0.05) / 2;
 
-  // 5. Personal Savings per person
-  const personalSavings = itemPrice - yourSplitShare;
-
-  // 6. Optional Sales Tax (ONLY calculated if checkbox is checked)
+  // 4. Optional Sales Tax (ONLY calculated if checkbox is checked)
   const stateInfo = STATE_TAX_RATES[selectedState] || { name: 'Default', rate: 0.07 };
   const estimatedTax = includeTax ? yourSplitShare * stateInfo.rate : 0;
 
-  // 7. Stripe Processing Fee (2.9% + $0.30 on share + tax)
+  // 5. Stripe Processing Fee (2.9% + $0.30 on share + tax)
   const stripeFee = (yourSplitShare + estimatedTax) * 0.029 + 0.30;
 
-  // 8. Final Amount Due per person
+  // 6. Final Amount Due per person
   const totalAmountDue = yourSplitShare + platformFee + estimatedTax + stripeFee;
 
   return (
@@ -180,13 +173,6 @@ export default function HomePage() {
 
           {/* Breakdown Output Table */}
           <div className="bg-gray-50 p-5 rounded-2xl border border-gray-200 space-y-3 text-sm">
-            <div className="flex justify-between text-gray-600">
-              <span>Standard Retail Cost (2 Items)</span>
-              <span className="font-semibold text-gray-900">
-                ${standardRetailCost2Items.toFixed(2)}
-              </span>
-            </div>
-
             <div className="flex justify-between text-gray-600">
               <span>BOGO Promo Total (Pre-tax)</span>
               <span className="font-semibold text-gray-900">
