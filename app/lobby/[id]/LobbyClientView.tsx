@@ -31,7 +31,7 @@ export interface LobbyData {
   user_b_variant?: any;
 }
 
-// Complete 50 States + DC Average Combined Sales Tax Rates (State + Local)
+// Complete 50 States + DC Average Combined Sales Tax Rates
 const STATE_TAX_RATES: Record<string, { name: string; rate: number }> = {
   AL: { name: 'Alabama', rate: 0.0924 },
   AK: { name: 'Alaska', rate: 0.0181 },
@@ -89,19 +89,17 @@ const STATE_TAX_RATES: Record<string, { name: string; rate: number }> = {
 interface CheckoutFormProps {
   lobbyId: string;
   role: 'HOST' | 'PARTNER';
-  activePrice: number;
-  userState: string;
   onSuccess: () => void;
 }
 
-function CheckoutForm({ lobbyId, role, activePrice, userState, onSuccess }: CheckoutFormProps) {
+function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
   const stripe = useStripe();
   const elements = useElements();
 
   const [name, setName] = useState('');
   const [street, setStreet] = useState('');
   const [city, setCity] = useState('');
-  const [state, setState] = useState(userState || 'NY');
+  const [state, setState] = useState('NY');
   const [zip, setZip] = useState('');
   const [phone, setPhone] = useState('');
 
@@ -296,11 +294,12 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  // Fully Dynamic Uncapped Retail Price & State Selection
+  // Dynamic Retail Price, Tax Toggle & State Selector
   const [activePrice, setActivePrice] = useState<number>(120);
   const [selectedState, setSelectedState] = useState<string>('NY');
+  const [includeTax, setIncludeTax] = useState<boolean>(false);
 
-  const updatePaymentIntentServer = async (newPrice: number, newState: string) => {
+  const updatePaymentIntentServer = async (newPrice: number, newState: string, withTax: boolean) => {
     if (!lobby || lobby.host_payment_intent_id) return;
     try {
       const res = await fetch('/api/create-payment-intent', {
@@ -311,6 +310,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           role,
           customPrice: newPrice,
           userState: newState,
+          includeTax: withTax,
         }),
       });
       const intentData = await res.json();
@@ -355,7 +355,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
       const hasUserPaidForRole = isHost ? hasHostPaid : hasPartnerPaid;
 
       if (!hasUserPaidForRole && data.status !== 'MATCHED') {
-        await updatePaymentIntentServer(initialPrice, selectedState);
+        await updatePaymentIntentServer(initialPrice, selectedState, includeTax);
       }
     } catch (err: any) {
       console.error('Lobby Fetching Error:', err);
@@ -389,12 +389,17 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const handlePriceChange = (val: number) => {
     const validPrice = Math.max(0.01, val);
     setActivePrice(validPrice);
-    updatePaymentIntentServer(validPrice, selectedState);
+    updatePaymentIntentServer(validPrice, selectedState, includeTax);
   };
 
   const handleStateChange = (st: string) => {
     setSelectedState(st);
-    updatePaymentIntentServer(activePrice, st);
+    updatePaymentIntentServer(activePrice, st, includeTax);
+  };
+
+  const handleTaxToggle = (checked: boolean) => {
+    setIncludeTax(checked);
+    updatePaymentIntentServer(activePrice, selectedState, checked);
   };
 
   const copyInviteLink = () => {
@@ -428,30 +433,30 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     );
   }
 
-  // DYNAMIC MATH CALCULATIONS
+  // DYNAMIC MATH ENGINE
   const dealType = (lobby.deal_type || 'BOGO').toUpperCase();
   const isBogo50 = dealType === 'BOGO_50' || dealType === 'BUY_1_GET_1_50_OFF';
 
-  // Standard Retail Cost for 2 Items
+  // 1. Standard Retail Cost (2 Items) = 2 * Item Retail Price
   const standardRetailCost2Items = activePrice * 2;
 
-  // Combined Deal Cost (Item 1 + Item 2 Deal)
-  const combinedDealTotal = isBogo50 ? activePrice * 1.5 : activePrice;
+  // 2. BOGO Promo Total (Pre-tax total for both items)
+  const bogoPromoTotal = isBogo50 ? activePrice * 1.5 : activePrice;
 
-  // Base Share Per Person
-  const baseShare = combinedDealTotal / 2;
+  // 3. Your Split Share (Pre-tax base share per person)
+  const baseShare = bogoPromoTotal / 2;
 
-  // Dynamic 5% Platform Fee calculated STRICTLY on single retail item price, split in half
+  // 4. Platform Fee = 5% of single item retail price split in half
   const platformFee = (activePrice * 0.05) / 2;
 
-  // State Tax Calculation
+  // 5. Dynamic State Tax (Only applied if includeTax box is checked)
   const stateInfo = STATE_TAX_RATES[selectedState] || { name: 'Default', rate: 0.07 };
-  const estimatedTax = baseShare * stateInfo.rate;
+  const estimatedTax = includeTax ? baseShare * stateInfo.rate : 0;
 
-  // Stripe Processing Fee on user share + tax
+  // 6. Stripe Processing Fee
   const stripeFee = (baseShare + estimatedTax) * 0.029 + 0.30;
 
-  // Total Amount Due per person
+  // 7. Total Amount Due per person
   const totalShare = baseShare + platformFee + estimatedTax + stripeFee;
 
   const isHost = role === 'HOST';
@@ -477,12 +482,12 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           </div>
         </div>
 
-        {/* Dynamic Retail Price & State Selector */}
+        {/* Dynamic Retail Price & Simulator Controls */}
         {!isMatched && !hasHostPaid && (
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-200 space-y-4">
             <div className="flex justify-between items-center">
               <label className="text-xs font-extrabold uppercase text-gray-500 tracking-wider">
-                Item Retail Price
+                Interactive Savings Simulator (Item Retail Price)
               </label>
               <div className="flex items-center gap-1">
                 <span className="text-sm font-bold text-gray-400">$</span>
@@ -525,8 +530,8 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           <div className="bg-white p-6 rounded-3xl shadow-md border border-gray-200 space-y-4">
             <h3 className="text-base font-extrabold border-b border-gray-100 pb-3 flex justify-between items-center">
               <span>Price Breakdown (Per Person)</span>
-              <span className="text-xs font-normal text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-semibold">
-                Saves ${ (standardRetailCost2Items - combinedDealTotal).toFixed(2) } total
+              <span className="text-xs font-normal text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full font-bold">
+                Save ${(standardRetailCost2Items - bogoPromoTotal).toFixed(2)} Total
               </span>
             </h3>
 
@@ -538,26 +543,37 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
                 </span>
               </div>
               <div className="flex justify-between text-gray-600">
-                <span>Item Retail Price (1 Item)</span>
-                <span className="font-semibold">${activePrice.toFixed(2)}</span>
+                <span>BOGO Promo Total (2 Items, Pre-tax)</span>
+                <span className="font-semibold text-gray-900">${bogoPromoTotal.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-gray-600">
-                <span>50/50 Base Share ({isBogo50 ? 'BOGO 50% Off' : 'BOGO Free'})</span>
-                <span className="font-semibold">${baseShare.toFixed(2)}</span>
+                <span>Your Split Share (Pre-tax)</span>
+                <span className="font-bold text-emerald-700">${baseShare.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-gray-600">
                 <span>Platform Fee (5% Retail Split)</span>
                 <span className="font-semibold">+${platformFee.toFixed(2)}</span>
               </div>
 
-              {/* 50 States Dynamic Tax Dropdown */}
-              <div className="flex justify-between items-center text-gray-600">
-                <div className="flex items-center gap-1.5">
-                  <span>Est. Sales Tax</span>
+              {/* State Selection & Add Tax Checkbox */}
+              <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="addTaxToggle"
+                      checked={includeTax}
+                      onChange={(e) => handleTaxToggle(e.target.checked)}
+                      className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                    />
+                    <label htmlFor="addTaxToggle" className="text-xs font-bold text-gray-700 cursor-pointer">
+                      Add State Sales Tax
+                    </label>
+                  </div>
                   <select
                     value={selectedState}
                     onChange={(e) => handleStateChange(e.target.value)}
-                    className="text-xs bg-gray-100 border border-gray-300 rounded px-1.5 py-0.5 font-bold text-gray-700"
+                    className="text-xs bg-white border border-gray-300 rounded px-2 py-1 font-bold text-gray-800"
                   >
                     {Object.keys(STATE_TAX_RATES).sort().map((st) => (
                       <option key={st} value={st}>
@@ -566,7 +582,12 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
                     ))}
                   </select>
                 </div>
-                <span className="font-semibold">+${estimatedTax.toFixed(2)}</span>
+                {includeTax && (
+                  <div className="flex justify-between text-xs text-gray-600 pt-1 border-t border-gray-200">
+                    <span>Estimated {selectedState} Sales Tax</span>
+                    <span className="font-semibold">+${estimatedTax.toFixed(2)}</span>
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-between text-gray-600">
@@ -611,8 +632,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
                     <CheckoutForm
                       lobbyId={lobbyId}
                       role={role}
-                      activePrice={activePrice}
-                      userState={selectedState}
                       onSuccess={fetchLobby}
                     />
                   </Elements>

@@ -8,7 +8,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
-// 50 States + DC Tax Rate Lookup
 const STATE_TAX_RATES: Record<string, number> = {
   AL: 0.0924, AK: 0.0181, AZ: 0.0837, AR: 0.0944, CA: 0.0885, CO: 0.0778,
   CT: 0.0635, DE: 0.0000, DC: 0.0600, FL: 0.0700, GA: 0.0738, HI: 0.0444,
@@ -27,7 +26,7 @@ export async function OPTIONS() {
 
 export async function POST(req: Request) {
   try {
-    const { lobbyId, role, customPrice, userState } = await req.json();
+    const { lobbyId, role, customPrice, userState, includeTax } = await req.json();
 
     if (!lobbyId || !role) {
       return NextResponse.json(
@@ -49,30 +48,32 @@ export async function POST(req: Request) {
       );
     }
 
-    // Dynamic Price Resolution: Use custom price if passed, otherwise fallback to DB
     const itemPrice = customPrice !== undefined ? Number(customPrice) : (lobby.item_price || 0);
     const itemPriceCents = Math.round(itemPrice * 100);
 
     const dealType = (lobby.deal_type || 'BOGO').toUpperCase();
     const isBogo50 = dealType === 'BOGO_50' || dealType === 'BUY_1_GET_1_50_OFF';
 
-    // Base Share in Integer Cents
-    const combinedTotalCents = isBogo50 ? Math.round(itemPriceCents * 1.5) : itemPriceCents;
-    const baseShareCents = Math.round(combinedTotalCents / 2);
+    // Pre-tax BOGO Promo Total Cents
+    const bogoPromoTotalCents = isBogo50 ? Math.round(itemPriceCents * 1.5) : itemPriceCents;
+    const baseShareCents = Math.round(bogoPromoTotalCents / 2);
 
-    // 5% Platform fee calculated STRICTLY on retail item price, split in half
+    // 5% Platform Fee (Calculated strictly on retail price, split in half)
     const totalPlatformFeeCents = Math.round(itemPriceCents * 0.05);
     const platformFeeCents = Math.round(totalPlatformFeeCents / 2);
 
-    // Dynamic State Tax Lookup
-    const stateTaxRate = STATE_TAX_RATES[userState?.toUpperCase()] ?? 0.07;
-    const estimatedTaxCents = Math.round(baseShareCents * stateTaxRate);
+    // Tax Cents (Only included if includeTax boolean is true)
+    let taxCents = 0;
+    if (includeTax) {
+      const stateTaxRate = STATE_TAX_RATES[userState?.toUpperCase()] ?? 0.07;
+      taxCents = Math.round(baseShareCents * stateTaxRate);
+    }
 
-    // Stripe fee (2.9% + 30 cents) calculated on (baseShare + tax)
-    const stripeFeeCents = Math.round((baseShareCents + estimatedTaxCents) * 0.029 + 30);
+    // Stripe Processing Fee
+    const stripeFeeCents = Math.round((baseShareCents + taxCents) * 0.029 + 30);
 
-    // Total amount due per person
-    const amountInCents = baseShareCents + platformFeeCents + estimatedTaxCents + stripeFeeCents;
+    // Final Hold Amount in Cents
+    const amountInCents = baseShareCents + platformFeeCents + taxCents + stripeFeeCents;
 
     const isHost = role === 'HOST';
     const paymentIntent = await stripe.paymentIntents.create({
@@ -83,6 +84,7 @@ export async function POST(req: Request) {
         lobbyId,
         role,
         itemPrice: itemPrice.toString(),
+        includeTax: includeTax ? 'true' : 'false',
         userState: userState || 'DEFAULT',
         dealType,
       },
