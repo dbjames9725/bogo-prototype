@@ -27,72 +27,9 @@ export interface LobbyData {
   partner_payment_intent_id?: string;
   user_a_address?: AddressData;
   user_b_address?: AddressData;
-  user_a_variant?: any;
-  user_b_variant?: any;
 }
 
-// Complete 50 States + DC Average Combined Sales Tax Rates
-const STATE_TAX_RATES: Record<string, { name: string; rate: number }> = {
-  AL: { name: 'Alabama', rate: 0.0924 },
-  AK: { name: 'Alaska', rate: 0.0181 },
-  AZ: { name: 'Arizona', rate: 0.0837 },
-  AR: { name: 'Arkansas', rate: 0.0944 },
-  CA: { name: 'California', rate: 0.0885 },
-  CO: { name: 'Colorado', rate: 0.0778 },
-  CT: { name: 'Connecticut', rate: 0.0635 },
-  DE: { name: 'Delaware', rate: 0.0000 },
-  DC: { name: 'District of Columbia', rate: 0.0600 },
-  FL: { name: 'Florida', rate: 0.0700 },
-  GA: { name: 'Georgia', rate: 0.0738 },
-  HI: { name: 'Hawaii', rate: 0.0444 },
-  ID: { name: 'Idaho', rate: 0.0603 },
-  IL: { name: 'Illinois', rate: 0.0884 },
-  IN: { name: 'Indiana', rate: 0.0700 },
-  IA: { name: 'Iowa', rate: 0.0694 },
-  KS: { name: 'Kansas', rate: 0.0865 },
-  KY: { name: 'Kentucky', rate: 0.0600 },
-  LA: { name: 'Louisiana', rate: 0.0956 },
-  ME: { name: 'Maine', rate: 0.0550 },
-  MD: { name: 'Maryland', rate: 0.0600 },
-  MA: { name: 'Massachusetts', rate: 0.0625 },
-  MI: { name: 'Michigan', rate: 0.0600 },
-  MN: { name: 'Minnesota', rate: 0.0803 },
-  MS: { name: 'Mississippi', rate: 0.0707 },
-  MO: { name: 'Missouri', rate: 0.0833 },
-  MT: { name: 'Montana', rate: 0.0000 },
-  NE: { name: 'Nebraska', rate: 0.0697 },
-  NV: { name: 'Nevada', rate: 0.0823 },
-  NH: { name: 'New Hampshire', rate: 0.0000 },
-  NJ: { name: 'New Jersey', rate: 0.0660 },
-  NM: { name: 'New Mexico', rate: 0.0772 },
-  NY: { name: 'New York', rate: 0.0853 },
-  NC: { name: 'North Carolina', rate: 0.0698 },
-  ND: { name: 'North Dakota', rate: 0.0696 },
-  OH: { name: 'Ohio', rate: 0.0724 },
-  OK: { name: 'Oklahoma', rate: 0.0899 },
-  OR: { name: 'Oregon', rate: 0.0000 },
-  PA: { name: 'Pennsylvania', rate: 0.0634 },
-  RI: { name: 'Rhode Island', rate: 0.0700 },
-  SC: { name: 'South Carolina', rate: 0.0744 },
-  SD: { name: 'South Dakota', rate: 0.0611 },
-  TN: { name: 'Tennessee', rate: 0.0955 },
-  TX: { name: 'Texas', rate: 0.0820 },
-  UT: { name: 'Utah', rate: 0.0722 },
-  VT: { name: 'Vermont', rate: 0.0636 },
-  VA: { name: 'Virginia', rate: 0.0577 },
-  WA: { name: 'Washington', rate: 0.0938 },
-  WV: { name: 'West Virginia', rate: 0.0657 },
-  WI: { name: 'Wisconsin', rate: 0.0543 },
-  WY: { name: 'Wyoming', rate: 0.0536 },
-};
-
-interface CheckoutFormProps {
-  lobbyId: string;
-  role: 'HOST' | 'PARTNER';
-  onSuccess: () => void;
-}
-
-function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
+function CheckoutForm({ lobbyId, role, onSuccess }: { lobbyId: string; role: 'HOST' | 'PARTNER'; onSuccess: () => void }) {
   const stripe = useStripe();
   const elements = useElements();
 
@@ -110,7 +47,7 @@ function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
     e.preventDefault();
 
     if (!stripe || !elements) {
-      setErrorMessage('Stripe SDK has not loaded yet. Please wait a moment and try again.');
+      setErrorMessage('Stripe SDK loading...');
       return;
     }
 
@@ -120,9 +57,7 @@ function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
     try {
       const { error, paymentIntent } = await stripe.confirmPayment({
         elements,
-        confirmParams: {
-          return_url: typeof window !== 'undefined' ? window.location.href : '',
-        },
+        confirmParams: { return_url: typeof window !== 'undefined' ? window.location.href : '' },
         redirect: 'if_required',
       });
 
@@ -140,14 +75,7 @@ function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
           ? { host_payment_intent_id: paymentIntent.id, user_a_address: addressData }
           : { partner_payment_intent_id: paymentIntent.id, user_b_address: addressData };
 
-        const { error: dbError } = await supabase
-          .from('lobbies')
-          .update(updateData)
-          .eq('id', lobbyId);
-
-        if (dbError) {
-          throw new Error('Failed updating database with payment intent: ' + dbError.message);
-        }
+        await supabase.from('lobbies').update(updateData).eq('id', lobbyId);
 
         if (isHost && typeof window !== 'undefined') {
           localStorage.setItem(`hosted_${lobbyId}`, 'true');
@@ -155,27 +83,17 @@ function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
 
         if (!isHost) {
           await new Promise((res) => setTimeout(res, 300));
-
-          const confirmRes = await fetch('/api/confirm-match', {
+          await fetch('/api/confirm-match', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ lobbyId }),
           });
-
-          const confirmData = await confirmRes.json();
-
-          if (!confirmRes.ok) {
-            throw new Error(confirmData.error || 'Failed capturing dual payment holds');
-          }
         }
 
         onSuccess();
-      } else {
-        setErrorMessage('Unexpected payment status. Please try submitting again.');
       }
     } catch (err: any) {
-      console.error('Checkout Form Submission Error:', err);
-      setErrorMessage(err.message || 'An unexpected error occurred during checkout');
+      setErrorMessage(err.message || 'Error completing checkout');
     } finally {
       setLoading(false);
     }
@@ -183,9 +101,9 @@ function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="bg-neutral-900 p-4 rounded-xl space-y-3 border border-neutral-800">
+      <div className="bg-neutral-900 p-4 rounded-2xl border border-neutral-800 space-y-3">
         <h4 className="text-xs font-bold uppercase text-neutral-400 tracking-wider">
-          Shipping & Billing Address
+          📦 Shipping & Billing Information
         </h4>
         <div>
           <label className="block text-[11px] font-semibold text-neutral-300 mb-1">Full Name</label>
@@ -195,7 +113,7 @@ function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white focus:ring-2 focus:ring-blue-500"
           />
         </div>
         <div>
@@ -206,7 +124,7 @@ function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
             required
             value={street}
             onChange={(e) => setStreet(e.target.value)}
-            className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white focus:ring-2 focus:ring-blue-500"
           />
         </div>
         <div className="grid grid-cols-3 gap-2">
@@ -218,57 +136,54 @@ function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
               required
               value={city}
               onChange={(e) => setCity(e.target.value)}
-              className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white"
             />
           </div>
           <div>
             <label className="block text-[11px] font-semibold text-neutral-300 mb-1">State</label>
-            <select
+            <input
+              type="text"
+              placeholder="NY"
+              required
               value={state}
-              onChange={(e) => setState(e.target.value)}
-              className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {Object.keys(STATE_TAX_RATES).sort().map((st) => (
-                <option key={st} value={st}>
-                  {st}
-                </option>
-              ))}
-            </select>
+              onChange={(e) => setState(e.target.value.toUpperCase())}
+              className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white uppercase"
+            />
           </div>
           <div>
-            <label className="block text-[11px] font-semibold text-neutral-300 mb-1">ZIP Code</label>
+            <label className="block text-[11px] font-semibold text-neutral-300 mb-1">ZIP</label>
             <input
               type="text"
               placeholder="10001"
               required
               value={zip}
               onChange={(e) => setZip(e.target.value)}
-              className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white"
             />
           </div>
         </div>
         <div>
-          <label className="block text-[11px] font-semibold text-neutral-300 mb-1">Phone Number</label>
+          <label className="block text-[11px] font-semibold text-neutral-300 mb-1">Phone</label>
           <input
             type="tel"
             placeholder="(555) 000-0000"
             required
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white"
           />
         </div>
       </div>
 
-      <div className="bg-neutral-900 p-4 rounded-xl border border-neutral-800">
+      <div className="bg-neutral-900 p-4 rounded-2xl border border-neutral-800">
         <h4 className="text-xs font-bold uppercase text-neutral-400 tracking-wider mb-3">
-          Payment Method
+          💳 Payment Pre-Authorization
         </h4>
         <PaymentElement />
       </div>
 
       {errorMessage && (
-        <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs rounded-lg font-semibold">
+        <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs rounded-xl font-semibold">
           ⚠️ {errorMessage}
         </div>
       )}
@@ -276,11 +191,9 @@ function CheckoutForm({ lobbyId, role, onSuccess }: CheckoutFormProps) {
       <button
         type="submit"
         disabled={!stripe || loading}
-        className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg transition disabled:opacity-50 text-base cursor-pointer"
+        className="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-extrabold rounded-xl shadow-lg transition duration-200 text-base cursor-pointer transform active:scale-95"
       >
-        {loading
-          ? 'Authorizing Hold...'
-          : `Authorize Payment (${role === 'HOST' ? 'Host' : 'Partner'} Share)`}
+        {loading ? '⚡ Securing Hold...' : `🚀 Authorize & Claim ${role === 'HOST' ? 'Host' : 'Partner'} Share`}
       </button>
     </form>
   );
@@ -292,57 +205,41 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const [role, setRole] = useState<'HOST' | 'PARTNER'>('PARTNER');
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [timeLeft, setTimeLeft] = useState(899);
+
+  useEffect(() => {
+    const timer = setInterval(() => setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0)), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const formatTimer = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
 
   const fetchLobby = async () => {
     try {
-      const { data, error } = await supabase
-        .from('lobbies')
-        .select('*')
-        .eq('id', lobbyId)
-        .single();
+      const { data } = await supabase.from('lobbies').select('*').eq('id', lobbyId).single();
+      if (data) {
+        setLobby(data);
+        const isHostStored = typeof window !== 'undefined' && localStorage.getItem(`hosted_${lobbyId}`) === 'true';
+        const isHost = isHostStored && !data.host_payment_intent_id;
+        const currentRole = isHost ? 'HOST' : 'PARTNER';
+        setRole(currentRole);
 
-      if (error || !data) {
-        setFetchError('Lobby record not found in database.');
-        setLoading(false);
-        return;
-      }
+        const hasUserPaid = currentRole === 'HOST' ? !!data.host_payment_intent_id : !!data.partner_payment_intent_id;
 
-      setLobby(data);
-
-      // STRICT ROLE DETERMINATION:
-      // If host_payment_intent_id is missing, current user MUST be Host.
-      // If host_payment_intent_id exists AND partner_payment_intent_id is missing, current user MUST be Partner.
-      const isHostStored = typeof window !== 'undefined' && localStorage.getItem(`hosted_${lobbyId}`) === 'true';
-      const isHost = isHostStored && !data.host_payment_intent_id;
-      const currentRole = isHost ? 'HOST' : 'PARTNER';
-
-      setRole(currentRole);
-
-      const hasUserPaidForRole = currentRole === 'HOST' ? !!data.host_payment_intent_id : !!data.partner_payment_intent_id;
-
-      if (!hasUserPaidForRole && data.status !== 'MATCHED') {
-        const res = await fetch('/api/create-payment-intent', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            lobbyId,
-            role: currentRole,
-          }),
-        });
-
-        const intentData = await res.json();
-
-        if (intentData.clientSecret) {
-          setClientSecret(intentData.clientSecret);
-        } else if (intentData.error) {
-          console.error('Create PaymentIntent Server Error:', intentData.error);
-          setFetchError(intentData.error);
+        if (!hasUserPaid && data.status !== 'MATCHED') {
+          const res = await fetch('/api/create-payment-intent', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lobbyId, role: currentRole }),
+          });
+          const intentData = await res.json();
+          if (intentData.clientSecret) setClientSecret(intentData.clientSecret);
         }
       }
-    } catch (err: any) {
-      console.error('Lobby Fetching Error:', err);
-      setFetchError('Unexpected error loading lobby details.');
     } finally {
       setLoading(false);
     }
@@ -350,22 +247,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
 
   useEffect(() => {
     fetchLobby();
-
-    const channel = supabase
-      .channel(`lobby_${lobbyId}`)
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'lobbies', filter: `id=eq.${lobbyId}` },
-        (payload) => {
-          const updated = payload.new as LobbyData;
-          setLobby(updated);
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
   }, [lobbyId]);
 
   const copyInviteLink = () => {
@@ -376,73 +257,86 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     }
   };
 
-  if (loading) {
+  if (loading || !lobby) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-neutral-950 text-neutral-400 font-sans">
-        <div className="flex items-center gap-3 bg-neutral-900 p-6 rounded-2xl shadow-sm border border-neutral-800">
-          <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-          <span className="font-semibold text-sm">Loading BOGO Split Lobby...</span>
+      <div className="min-h-screen flex items-center justify-center bg-neutral-950 text-neutral-400">
+        <div className="flex items-center gap-3 bg-neutral-900 p-6 rounded-2xl border border-neutral-800">
+          <div className="w-5 h-5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+          <span className="font-bold text-sm">Initializing Gamified Lobby...</span>
         </div>
       </div>
     );
   }
 
-  if (fetchError || !lobby) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-neutral-950 p-4 font-sans text-white">
-        <div className="max-w-md bg-neutral-900 p-8 rounded-3xl shadow-md border border-neutral-800 text-center space-y-4">
-          <div className="text-4xl">⚠️</div>
-          <h2 className="text-xl font-extrabold">Lobby Issue</h2>
-          <p className="text-xs text-neutral-400">{fetchError || 'Unable to locate this lobby.'}</p>
-        </div>
-      </div>
-    );
-  }
-
-  // MATH ENGINE
   const itemPrice = lobby.item_price || 0;
-  const dealType = (lobby.deal_type || 'BOGO').toUpperCase();
-  const isBogo50 = dealType === 'BOGO_50' || dealType === 'BUY_1_GET_1_50_OFF';
-
+  const isBogo50 = lobby.deal_type === 'BOGO_50';
   const bogoPromoTotal = isBogo50 ? itemPrice * 1.5 : itemPrice;
   const baseShare = bogoPromoTotal / 2;
   const platformFee = (itemPrice * 0.05) / 2;
+  const personalSavings = itemPrice - baseShare;
 
   const isHost = role === 'HOST';
   const hasHostPaid = !!lobby.host_payment_intent_id;
   const hasPartnerPaid = !!lobby.partner_payment_intent_id;
   const isMatched = lobby.status === 'MATCHED' && hasHostPaid && hasPartnerPaid;
 
+  const progressPercent = isMatched ? 100 : hasHostPaid || hasPartnerPaid ? 50 : 10;
+
   return (
     <div className="min-h-screen bg-neutral-950 text-white py-8 px-4 font-sans">
       <div className="max-w-xl mx-auto space-y-6">
-        <div className="bg-neutral-900 p-5 rounded-2xl border border-neutral-800 flex items-center justify-between">
-          <div>
-            <span className="text-xs font-extrabold uppercase tracking-wider text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2.5 py-1 rounded-md">
-              {isHost ? '👑 HOST DASHBOARD' : '🤝 PARTNER DEAL INVITATION'}
-            </span>
-            <h2 className="text-xl font-extrabold mt-2 text-white">{lobby.item_name}</h2>
+
+        <div className="bg-gradient-to-r from-blue-900/40 via-purple-900/40 to-neutral-900 p-5 rounded-3xl border border-neutral-800 space-y-3">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">🏆</span>
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                  +250 BOGO XP AVAILABLE
+                </span>
+                <h2 className="text-lg font-black text-white mt-1">{lobby.item_name}</h2>
+              </div>
+            </div>
+            <div className="text-right">
+              <span className="text-xs text-amber-400 font-extrabold flex items-center gap-1 justify-end">
+                <span>⏱️ Hold Expires:</span>
+              </span>
+              <span className="text-base font-black text-white">{formatTimer(timeLeft)}</span>
+            </div>
           </div>
-          <div className="text-right">
-            <span className="text-xs text-neutral-500 block font-semibold">Deal Type</span>
-            <span className="text-sm font-bold text-emerald-400">
-              {isBogo50 ? 'Buy 1 Get 1 50% Off' : 'Buy 1 Get 1 Free'}
-            </span>
+
+          <div className="space-y-1.5 pt-2 border-t border-neutral-800">
+            <div className="flex justify-between text-xs font-bold text-neutral-300">
+              <span>Deal Match Unlock Progress</span>
+              <span className="text-emerald-400">{progressPercent}% Unlocked</span>
+            </div>
+            <div className="w-full h-3 bg-neutral-950 rounded-full overflow-hidden border border-neutral-800">
+              <div
+                className="h-full bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-400 transition-all duration-700 rounded-full"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
           </div>
         </div>
 
         {isMatched ? (
-          <div className="bg-emerald-600 text-white p-6 rounded-3xl shadow-lg space-y-2 text-center">
-            <div className="text-4xl">🎉</div>
-            <h3 className="text-2xl font-black">MATCH CONFIRMED & PAYMENTS CAPTURED!</h3>
-            <p className="text-xs text-emerald-100">
-              Both pre-authorizations were captured successfully. The merchant will process and ship your split order!
+          <div className="bg-gradient-to-br from-emerald-600 to-teal-700 text-white p-8 rounded-3xl shadow-2xl space-y-3 text-center border border-emerald-400/30">
+            <div className="text-5xl animate-bounce">🎉</div>
+            <h3 className="text-2xl font-black tracking-tight">DEAL MATCH UNLOCKED!</h3>
+            <p className="text-xs text-emerald-100 font-medium">
+              You both saved <span className="font-bold text-white">${personalSavings.toFixed(2)}</span>! Pre-authorizations have been captured and order processing has begun.
             </p>
+            <div className="inline-block bg-white/10 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/20 text-xs font-bold text-emerald-200 mt-2">
+              🏅 Badge Unlocked: Master Deal Matcher
+            </div>
           </div>
         ) : (
           <div className="bg-neutral-900 p-6 rounded-3xl border border-neutral-800 space-y-4">
             <h3 className="text-base font-extrabold border-b border-neutral-800 pb-3 flex justify-between items-center text-white">
-              <span>Price Breakdown (Per Person)</span>
+              <span>Price Breakdown</span>
+              <span className="text-xs font-extrabold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full">
+                Saves ${personalSavings.toFixed(2)} Each
+              </span>
             </h3>
 
             <div className="space-y-2.5 text-sm">
@@ -465,16 +359,16 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
         {isHost && hasHostPaid && !isMatched && (
           <div className="bg-blue-500/10 border border-blue-500/20 p-6 rounded-3xl space-y-3">
             <div className="flex items-center gap-2 text-blue-400 font-bold text-sm">
-              <span>🔗 Share Invite Link With a Partner</span>
+              <span>🤝 Challenge a Friend to Split & Earn +250 XP</span>
             </div>
             <p className="text-xs text-blue-300">
-              Your payment hold is placed! Share this link with a friend or social group to split the BOGO deal.
+              Your share is locked in! Send this invite link to a partner before the 15-minute timer expires.
             </p>
             <button
               onClick={copyInviteLink}
-              className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-sm transition shadow-sm cursor-pointer"
+              className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-extrabold rounded-xl text-sm transition shadow-md cursor-pointer"
             >
-              {copied ? '✓ Invite Link Copied!' : 'Copy Invite Link'}
+              {copied ? '✓ Invite Link Copied to Clipboard!' : '🔗 Copy Share Invite Link'}
             </button>
           </div>
         )}
@@ -484,27 +378,23 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
             {(isHost && !hasHostPaid) || (!isHost && !hasPartnerPaid) ? (
               <>
                 <h3 className="text-lg font-extrabold text-white border-b border-neutral-800 pb-3">
-                  {isHost ? 'Authorize Host Payment Hold' : 'Join Deal & Authorize Your Split Share'}
+                  {isHost ? 'Authorize Host Pre-Hold' : 'Accept Challenge & Claim Partner Split'}
                 </h3>
                 {clientSecret ? (
                   <Elements stripe={stripePromise} options={{ clientSecret }}>
-                    <CheckoutForm
-                      lobbyId={lobbyId}
-                      role={role}
-                      onSuccess={fetchLobby}
-                    />
+                    <CheckoutForm lobbyId={lobbyId} role={role} onSuccess={fetchLobby} />
                   </Elements>
                 ) : (
                   <div className="py-6 text-center text-xs font-semibold text-neutral-500">
-                    Preparing secure Stripe checkout...
+                    Preparing Stripe Checkout...
                   </div>
                 )}
               </>
             ) : (
               <div className="p-4 bg-amber-500/10 border border-amber-500/20 text-amber-300 rounded-2xl text-xs font-semibold text-center space-y-1">
-                <div>⏳ Waiting for {isHost ? 'Partner' : 'Host'} to authorize their share...</div>
+                <div>⏳ Waiting for {isHost ? 'Partner' : 'Host'} to authorize their split...</div>
                 <div className="text-[11px] font-normal text-amber-400">
-                  Neither card is charged until both pre-authorizations succeed.
+                  Neither card is charged until both players lock in their hold.
                 </div>
               </div>
             )}

@@ -26,7 +26,7 @@ export async function OPTIONS() {
 
 export async function POST(req: Request) {
   try {
-    const { lobbyId, role, customPrice, userState, includeTax } = await req.json();
+    const { lobbyId, role, userState, includeTax } = await req.json();
 
     if (!lobbyId || !role) {
       return NextResponse.json(
@@ -48,50 +48,40 @@ export async function POST(req: Request) {
       );
     }
 
-    const itemPrice = customPrice !== undefined ? Number(customPrice) : (lobby.item_price || 0);
+    const itemPrice = lobby.item_price || 0;
     const itemPriceCents = Math.round(itemPrice * 100);
 
     const dealType = (lobby.deal_type || 'BOGO').toUpperCase();
     const isBogo50 = dealType === 'BOGO_50' || dealType === 'BUY_1_GET_1_50_OFF';
 
-    // Pre-tax BOGO Promo Total Cents
     const bogoPromoTotalCents = isBogo50 ? Math.round(itemPriceCents * 1.5) : itemPriceCents;
     const baseShareCents = Math.round(bogoPromoTotalCents / 2);
 
-    // 5% Platform Fee (Calculated strictly on retail price, split in half)
     const totalPlatformFeeCents = Math.round(itemPriceCents * 0.05);
     const platformFeeCents = Math.round(totalPlatformFeeCents / 2);
 
-    // Tax Cents (Only included if includeTax boolean is true)
     let taxCents = 0;
     if (includeTax) {
       const stateTaxRate = STATE_TAX_RATES[userState?.toUpperCase()] ?? 0.07;
       taxCents = Math.round(baseShareCents * stateTaxRate);
     }
 
-    // Stripe Processing Fee
     const stripeFeeCents = Math.round((baseShareCents + taxCents) * 0.029 + 30);
-
-    // Final Hold Amount in Cents
     const amountInCents = baseShareCents + platformFeeCents + taxCents + stripeFeeCents;
 
+    const validAmountCents = Math.max(50, amountInCents);
+
     const isHost = role === 'HOST';
+
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: amountInCents,
+      amount: validAmountCents,
       currency: 'usd',
       capture_method: 'manual',
-      metadata: {
-        lobbyId,
-        role,
-        itemPrice: itemPrice.toString(),
-        includeTax: includeTax ? 'true' : 'false',
-        userState: userState || 'DEFAULT',
-        dealType,
-      },
+      metadata: { lobbyId, role, dealType },
     });
 
     const updateColumn = isHost
-      ? { host_payment_intent_id: paymentIntent.id, item_price: itemPrice }
+      ? { host_payment_intent_id: paymentIntent.id }
       : { partner_payment_intent_id: paymentIntent.id };
 
     await supabase.from('lobbies').update(updateColumn).eq('id', lobbyId);

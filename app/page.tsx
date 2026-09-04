@@ -3,59 +3,24 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-// Complete 50 States + DC Average Combined Sales Tax Rates
 const STATE_TAX_RATES: Record<string, { name: string; rate: number }> = {
-  AL: { name: 'Alabama', rate: 0.0924 },
-  AK: { name: 'Alaska', rate: 0.0181 },
-  AZ: { name: 'Arizona', rate: 0.0837 },
-  AR: { name: 'Arkansas', rate: 0.0944 },
-  CA: { name: 'California', rate: 0.0885 },
-  CO: { name: 'Colorado', rate: 0.0778 },
-  CT: { name: 'Connecticut', rate: 0.0635 },
-  DE: { name: 'Delaware', rate: 0.0000 },
-  DC: { name: 'District of Columbia', rate: 0.0600 },
-  FL: { name: 'Florida', rate: 0.0700 },
-  GA: { name: 'Georgia', rate: 0.0738 },
-  HI: { name: 'Hawaii', rate: 0.0444 },
-  ID: { name: 'Idaho', rate: 0.0603 },
-  IL: { name: 'Illinois', rate: 0.0884 },
-  IN: { name: 'Indiana', rate: 0.0700 },
-  IA: { name: 'Iowa', rate: 0.0694 },
-  KS: { name: 'Kansas', rate: 0.0865 },
-  KY: { name: 'Kentucky', rate: 0.0600 },
-  LA: { name: 'Louisiana', rate: 0.0956 },
-  ME: { name: 'Maine', rate: 0.0550 },
-  MD: { name: 'Maryland', rate: 0.0600 },
-  MA: { name: 'Massachusetts', rate: 0.0625 },
-  MI: { name: 'Michigan', rate: 0.0600 },
-  MN: { name: 'Minnesota', rate: 0.0803 },
-  MS: { name: 'Mississippi', rate: 0.0707 },
-  MO: { name: 'Missouri', rate: 0.0833 },
-  MT: { name: 'Montana', rate: 0.0000 },
-  NE: { name: 'Nebraska', rate: 0.0697 },
-  NV: { name: 'Nevada', rate: 0.0823 },
-  NH: { name: 'New Hampshire', rate: 0.0000 },
-  NJ: { name: 'New Jersey', rate: 0.0660 },
-  NM: { name: 'New Mexico', rate: 0.0772 },
-  NY: { name: 'New York', rate: 0.0853 },
-  NC: { name: 'North Carolina', rate: 0.0698 },
-  ND: { name: 'North Dakota', rate: 0.0696 },
-  OH: { name: 'Ohio', rate: 0.0724 },
-  OK: { name: 'Oklahoma', rate: 0.0899 },
-  OR: { name: 'Oregon', rate: 0.0000 },
-  PA: { name: 'Pennsylvania', rate: 0.0634 },
-  RI: { name: 'Rhode Island', rate: 0.0700 },
-  SC: { name: 'South Carolina', rate: 0.0744 },
-  SD: { name: 'South Dakota', rate: 0.0611 },
-  TN: { name: 'Tennessee', rate: 0.0955 },
-  TX: { name: 'Texas', rate: 0.0820 },
-  UT: { name: 'Utah', rate: 0.0722 },
-  VT: { name: 'Vermont', rate: 0.0636 },
-  VA: { name: 'Virginia', rate: 0.0577 },
-  WA: { name: 'Washington', rate: 0.0938 },
-  WV: { name: 'West Virginia', rate: 0.0657 },
-  WI: { name: 'Wisconsin', rate: 0.0543 },
-  WY: { name: 'Wyoming', rate: 0.0536 },
+  AL: { name: 'Alabama', rate: 0.0924 }, AK: { name: 'Alaska', rate: 0.0181 }, AZ: { name: 'Arizona', rate: 0.0837 },
+  AR: { name: 'Arkansas', rate: 0.0944 }, CA: { name: 'California', rate: 0.0885 }, CO: { name: 'Colorado', rate: 0.0778 },
+  CT: { name: 'Connecticut', rate: 0.0635 }, DE: { name: 'Delaware', rate: 0.0000 }, DC: { name: 'District of Columbia', rate: 0.0600 },
+  FL: { name: 'Florida', rate: 0.0700 }, GA: { name: 'Georgia', rate: 0.0738 }, HI: { name: 'Hawaii', rate: 0.0444 },
+  ID: { name: 'Idaho', rate: 0.0603 }, IL: { name: 'Illinois', rate: 0.0884 }, IN: { name: 'Indiana', rate: 0.0700 },
+  IA: { name: 'Iowa', rate: 0.0694 }, KS: { name: 'Kansas', rate: 0.0865 }, KY: { name: 'Kentucky', rate: 0.0600 },
+  LA: { name: 'Louisiana', rate: 0.0956 }, ME: { name: 'Maine', rate: 0.0550 }, MD: { name: 'Maryland', rate: 0.0600 },
+  MA: { name: 'Massachusetts', rate: 0.0625 }, MI: { name: 'Michigan', rate: 0.0600 }, MN: { name: 'Minnesota', rate: 0.0803 },
+  MS: { name: 'Mississippi', rate: 0.0707 }, MO: { name: 'Missouri', rate: 0.0833 }, MT: { name: 'Montana', rate: 0.0000 },
+  NE: { name: 'Nebraska', rate: 0.0697 }, NV: { name: 'Nevada', rate: 0.0823 }, NH: { name: 'New Hampshire', rate: 0.0000 },
+  NJ: { name: 'New Jersey', rate: 0.0660 }, NM: { name: 'New Mexico', rate: 0.0772 }, NY: { name: 'New York', rate: 0.0853 },
+  NC: { name: 'North Carolina', rate: 0.0698 }, ND: { name: 'North Dakota', rate: 0.0696 }, OH: { name: 'Ohio', rate: 0.0724 },
+  OK: { name: 'Oklahoma', rate: 0.0899 }, OR: { name: 'Oregon', rate: 0.0000 }, PA: { name: 'Pennsylvania', rate: 0.0634 },
+  RI: { name: 'Rhode Island', rate: 0.0700 }, SC: { name: 'South Carolina', rate: 0.0744 }, SD: { name: 'South Dakota', rate: 0.0611 },
+  TN: { name: 'Tennessee', rate: 0.0955 }, TX: { name: 'Texas', rate: 0.0820 }, UT: { name: 'Utah', rate: 0.0722 },
+  VT: { name: 'Vermont', rate: 0.0636 }, VA: { name: 'Virginia', rate: 0.0577 }, WA: { name: 'Washington', rate: 0.0938 },
+  WV: { name: 'West Virginia', rate: 0.0657 }, WI: { name: 'Wisconsin', rate: 0.0543 }, WY: { name: 'Wyoming', rate: 0.0536 },
 };
 
 export default function HomePage() {
@@ -70,34 +35,17 @@ export default function HomePage() {
   const [isCreatingLobby, setIsCreatingLobby] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
 
-  // -------------------------------------------------------------
-  // ACCURATE PRE-TAX MATH ENGINE
-  // -------------------------------------------------------------
   const itemPrice = Math.max(0.01, activePrice);
-
-  // 1. BOGO Promo Total
   const isBogo50 = dealType === 'BOGO_50';
   const bogoPromoTotal = isBogo50 ? itemPrice * 1.5 : itemPrice;
-
-  // 2. Your Split Share (Pre-tax)
   const yourSplitShare = bogoPromoTotal / 2;
-
-  // 3. Platform Fee
   const platformFee = (itemPrice * 0.05) / 2;
 
-  // 4. Optional Sales Tax
   const stateInfo = STATE_TAX_RATES[selectedState] || { name: 'Default', rate: 0.07 };
   const estimatedTax = includeTax ? yourSplitShare * stateInfo.rate : 0;
-
-  // 5. Stripe Processing Fee
   const stripeFee = (yourSplitShare + estimatedTax) * 0.029 + 0.30;
-
-  // 6. Final Amount Due
   const totalAmountDue = yourSplitShare + platformFee + estimatedTax + stripeFee;
 
-  // -------------------------------------------------------------
-  // LOBBY CREATION & NAVIGATION HANDLER
-  // -------------------------------------------------------------
   const handleLockInSplit = async () => {
     setIsCreatingLobby(true);
     setErrorMessage('');
@@ -121,7 +69,6 @@ export default function HomePage() {
         throw new Error(data.error || 'Failed to initialize BOGO lobby');
       }
 
-      // Mark user as host in local storage and redirect to lobby
       if (typeof window !== 'undefined') {
         localStorage.setItem(`hosted_${data.lobbyId}`, 'true');
       }
@@ -138,10 +85,9 @@ export default function HomePage() {
     <main className="min-h-screen bg-neutral-950 text-white py-12 px-4 font-sans antialiased">
       <div className="max-w-xl mx-auto space-y-8">
        
-        {/* Header Section */}
         <div className="text-center space-y-2">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-semibold">
-            <span>⚡ BOGO Split Platform Engine</span>
+            <span>⚡ BOGO Split Engine</span>
           </div>
           <h1 className="text-3xl font-black tracking-tight text-white sm:text-4xl">
             Split Any Deal 50/50
@@ -151,7 +97,6 @@ export default function HomePage() {
           </p>
         </div>
 
-        {/* Simulator Card (Dark Theme Restored) */}
         <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-2xl space-y-6">
           <div className="border-b border-neutral-800 pb-4">
             <div className="flex items-center gap-2 text-xs font-extrabold uppercase text-blue-400 tracking-wider">
@@ -162,9 +107,7 @@ export default function HomePage() {
             </p>
           </div>
 
-          {/* Controls Section */}
           <div className="space-y-5">
-            {/* Product Name Input Field */}
             <div className="space-y-2">
               <label className="text-xs font-bold text-neutral-300 uppercase tracking-wider block">
                 Product Name / Item Description
@@ -178,7 +121,6 @@ export default function HomePage() {
               />
             </div>
 
-            {/* Retail Price Slider & Input */}
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full">
@@ -212,7 +154,6 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* Deal Mechanics Buttons */}
             <div className="space-y-2">
               <label className="text-xs font-bold text-neutral-300 uppercase tracking-wider block">
                 Select Deal Mechanics
@@ -244,7 +185,6 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Breakdown Output Table */}
           <div className="bg-neutral-950 p-5 rounded-2xl border border-neutral-800 space-y-3 text-sm">
             <div className="flex justify-between text-neutral-400">
               <span>BOGO Promo Total (Pre-tax)</span>
@@ -268,7 +208,6 @@ export default function HomePage() {
               <span className="font-semibold text-neutral-300">+${platformFee.toFixed(2)}</span>
             </div>
 
-            {/* Optional Tax Toggle & State Selector */}
             <div className="pt-2 border-t border-neutral-800 space-y-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -309,7 +248,6 @@ export default function HomePage() {
               <span className="font-semibold text-neutral-300">+${stripeFee.toFixed(2)}</span>
             </div>
 
-            {/* Total Amount Due */}
             <div className="flex justify-between text-base font-black text-white pt-3 border-t border-neutral-800">
               <span>Total Amount Due</span>
               <span className="text-blue-400">${totalAmountDue.toFixed(2)}</span>
@@ -322,7 +260,6 @@ export default function HomePage() {
             </div>
           )}
 
-          {/* Action CTA Button */}
           <button
             type="button"
             onClick={handleLockInSplit}

@@ -1,47 +1,21 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-};
-
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders });
-}
-
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const { itemName, itemPrice, dealType, userAShare, userBShare, userAVariant } = body;
+    const { itemName, itemPrice, dealType } = await req.json();
 
-    if (!itemName || !itemPrice) {
-      return NextResponse.json(
-        { error: 'Missing required lobby fields' },
-        { status: 400, headers: corsHeaders }
-      );
-    }
-
-    const priceNum = parseFloat(itemPrice);
-    const baseShare = priceNum / 2;
+    const priceNum = Number(itemPrice) || 0;
+    const deal = (dealType || 'BOGO_FREE').toUpperCase();
 
     const { data: lobby, error } = await supabase
       .from('lobbies')
       .insert([
         {
-          item_name: itemName,
+          item_name: itemName || 'BOGO Split Item',
           item_price: priceNum,
-          total_price: priceNum,
-          deal_type: dealType || 'BOGO_FREE',
-          user_a_share: baseShare,
-          user_b_share: baseShare,
-          host_share: baseShare,
-          partner_share: baseShare,
+          deal_type: deal,
           status: 'PENDING',
-          user_a_variant: userAVariant || {},
-          host_payment_intent_id: null,
-          partner_payment_intent_id: null,
         },
       ])
       .select()
@@ -50,17 +24,14 @@ export async function POST(req: Request) {
     if (error || !lobby) {
       console.error('Supabase Lobby Creation Error:', error);
       return NextResponse.json(
-        { error: error ? error.message : 'Failed creating lobby' },
-        { status: 500, headers: corsHeaders }
+        { error: error?.message || 'Failed to insert lobby into Supabase' },
+        { status: 500 }
       );
     }
 
-    return NextResponse.json({ lobbyId: lobby.id }, { headers: corsHeaders });
+    return NextResponse.json({ lobbyId: lobby.id });
   } catch (err: any) {
-    console.error('Create Lobby Route Error:', err.message);
-    return NextResponse.json(
-      { error: err.message },
-      { status: 500, headers: corsHeaders }
-    );
+    console.error('Create Lobby Route Exception:', err);
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
