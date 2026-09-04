@@ -60,7 +60,6 @@ function CheckoutForm({ lobbyId, role, onSuccess }: { lobbyId: string; role: 'HO
       const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://bogo-prototype-wheat.vercel.app';
       const redirectUrl = `${currentOrigin}/lobby/${lobbyId}`;
 
-      // Trigger payment confirmation
       const result = await stripe.confirmPayment({
         elements,
         confirmParams: {
@@ -72,7 +71,6 @@ function CheckoutForm({ lobbyId, role, onSuccess }: { lobbyId: string; role: 'HO
       if (result.error) {
         console.error('FULL STRIPE CONFIRMATION ERROR OBJECT:', result.error);
 
-        // Capture all diagnostic fields from Stripe
         const detailedMessage = result.error.message || 'Unknown Stripe Error';
         const code = result.error.code ? `[Code: ${result.error.code}]` : '';
         const declineCode = result.error.decline_code ? `[Decline Code: ${result.error.decline_code}]` : '';
@@ -91,6 +89,7 @@ function CheckoutForm({ lobbyId, role, onSuccess }: { lobbyId: string; role: 'HO
         const isHost = role === 'HOST';
         const addressData: AddressData = { name, street1: street, city, state, zip, phone };
 
+        // ONLY write the payment_intent_id to Supabase AFTER confirmation succeeds!
         const updateData = isHost
           ? { host_payment_intent_id: paymentIntent.id, user_a_address: addressData }
           : { partner_payment_intent_id: paymentIntent.id, user_b_address: addressData };

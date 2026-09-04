@@ -23,7 +23,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // Fetch the lobby record
     const { data: lobby, error } = await supabase
       .from('lobbies')
       .select('*')
@@ -39,13 +38,12 @@ export async function POST(req: Request) {
 
     const isHost = role === 'HOST';
 
-    // 1. Check if this role ALREADY completed their payment hold
+    // Prevent re-creating an intent if this role has ALREADY authorized their card
     const existingIntentId = isHost ? lobby.host_payment_intent_id : lobby.partner_payment_intent_id;
 
     if (existingIntentId) {
       try {
         const existingIntent = await stripe.paymentIntents.retrieve(existingIntentId);
-        // If it's already authorized/succeeded, don't re-confirm it!
         if (existingIntent.status === 'requires_capture' || existingIntent.status === 'succeeded') {
           return NextResponse.json(
             { error: `${role} payment hold has already been authorized.` },
@@ -53,11 +51,11 @@ export async function POST(req: Request) {
           );
         }
       } catch (e) {
-        // If retrieval fails, proceed to create a new one
+        // Fallthrough if retrieval fails
       }
     }
 
-    // 2. Calculate accurate amounts in integer cents
+    // Precise pre-tax amount calculations in integer cents
     const itemPrice = Number(lobby.item_price) || 0;
     const itemPriceCents = Math.round(itemPrice * 100);
 
@@ -75,7 +73,8 @@ export async function POST(req: Request) {
     const totalAmountCents = Math.round(baseShareCents + platformFeeCents + stripeFeeCents);
     const validAmountCents = Math.max(50, totalAmountCents);
 
-    // 3. ALWAYS create a BRAND NEW PaymentIntent dedicated to this specific role
+    // Create a brand-new PaymentIntent for manual hold capture
+    // NOTE: We do NOT write this intent ID to Supabase yet!
     const paymentIntent = await stripe.paymentIntents.create({
       amount: validAmountCents,
       currency: 'usd',
@@ -84,7 +83,7 @@ export async function POST(req: Request) {
         lobbyId,
         role,
         dealType,
-        createdFor: isHost ? 'Host_Share' : 'Partner_Share'
+        participantRole: isHost ? 'Host' : 'Partner'
       },
     });
 
