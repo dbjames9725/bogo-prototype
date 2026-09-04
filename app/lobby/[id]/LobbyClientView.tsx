@@ -29,6 +29,9 @@ export interface LobbyData {
   user_b_address?: AddressData;
 }
 
+// -------------------------------------------------------------
+// ISOLATED CHECKOUT FORM (Prevents re-renders from mutating Intent)
+// -------------------------------------------------------------
 function CheckoutForm({ lobbyId, role, onSuccess }: { lobbyId: string; role: 'HOST' | 'PARTNER'; onSuccess: () => void }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -234,6 +237,19 @@ function CheckoutForm({ lobbyId, role, onSuccess }: { lobbyId: string; role: 'HO
   );
 }
 
+// -------------------------------------------------------------
+// STABLE STRIPE ELEMENTS WRAPPER (Prevents re-instantiating Elements)
+// -------------------------------------------------------------
+function StripeCheckoutWrapper({ lobbyId, role, clientSecret, onSuccess }: { lobbyId: string; role: 'HOST' | 'PARTNER'; clientSecret: string; onSuccess: () => void }) {
+  const optionsRef = useRef({ clientSecret });
+
+  return (
+    <Elements stripe={stripePromise} options={optionsRef.current}>
+      <CheckoutForm lobbyId={lobbyId} role={role} onSuccess={onSuccess} />
+    </Elements>
+  );
+}
+
 export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const [lobby, setLobby] = useState<LobbyData | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
@@ -243,7 +259,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const [timeLeft, setTimeLeft] = useState(899);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  // Intent Lock Guard to prevent multiple creations
   const intentCreatedRef = useRef<boolean>(false);
 
   useEffect(() => {
@@ -275,7 +290,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
 
       const hasUserPaid = currentRole === 'HOST' ? !!data.host_payment_intent_id : !!data.partner_payment_intent_id;
 
-      // Lock Intent Creation to strictly ONE request per session
       if (!hasUserPaid && data.status !== 'MATCHED' && !intentCreatedRef.current) {
         intentCreatedRef.current = true;
         const res = await fetch('/api/create-payment-intent', {
@@ -457,9 +471,12 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
                   {isHost ? 'Authorize Host Pre-Hold' : 'Accept Challenge & Claim Partner Split'}
                 </h3>
                 {clientSecret ? (
-                  <Elements stripe={stripePromise} options={{ clientSecret }}>
-                    <CheckoutForm lobbyId={lobbyId} role={role} onSuccess={initLobbyAndIntent} />
-                  </Elements>
+                  <StripeCheckoutWrapper
+                    lobbyId={lobbyId}
+                    role={role}
+                    clientSecret={clientSecret}
+                    onSuccess={initLobbyAndIntent}
+                  />
                 ) : (
                   <div className="py-6 text-center text-xs font-semibold text-neutral-500">
                     Preparing Stripe Checkout...
@@ -480,4 +497,3 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     </div>
   );
 }
-

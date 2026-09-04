@@ -56,7 +56,7 @@ export async function POST(req: Request) {
 
     const isHost = role === 'HOST';
 
-    // Create a fresh, isolated PaymentIntent strictly for manual capture
+    // Create a isolated, unconfirmed PaymentIntent dedicated strictly to this request
     const paymentIntent = await stripe.paymentIntents.create({
       amount: validAmountCents,
       currency: 'usd',
