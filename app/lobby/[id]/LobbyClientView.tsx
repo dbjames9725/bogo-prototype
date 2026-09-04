@@ -91,8 +91,11 @@ function CheckoutForm({ lobbyId, role, onSuccess }: { lobbyId: string; role: 'HO
         }
 
         onSuccess();
+      } else {
+        setErrorMessage('Unexpected payment status. Please try again.');
       }
     } catch (err: any) {
+      console.error('Checkout Form Error:', err);
       setErrorMessage(err.message || 'Error completing checkout');
     } finally {
       setLoading(false);
@@ -113,7 +116,7 @@ function CheckoutForm({ lobbyId, role, onSuccess }: { lobbyId: string; role: 'HO
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white focus:ring-2 focus:ring-blue-500"
+            className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
         <div>
@@ -124,7 +127,7 @@ function CheckoutForm({ lobbyId, role, onSuccess }: { lobbyId: string; role: 'HO
             required
             value={street}
             onChange={(e) => setStreet(e.target.value)}
-            className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white focus:ring-2 focus:ring-blue-500"
+            className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
         <div className="grid grid-cols-3 gap-2">
@@ -223,6 +226,9 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
       const { data } = await supabase.from('lobbies').select('*').eq('id', lobbyId).single();
       if (data) {
         setLobby(data);
+
+        // CLEAN ROLE EVALUATION:
+        // Host status ONLY applies if user explicitly created it in local storage AND host intent is empty.
         const isHostStored = typeof window !== 'undefined' && localStorage.getItem(`hosted_${lobbyId}`) === 'true';
         const isHost = isHostStored && !data.host_payment_intent_id;
         const currentRole = isHost ? 'HOST' : 'PARTNER';
@@ -240,6 +246,8 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           if (intentData.clientSecret) setClientSecret(intentData.clientSecret);
         }
       }
+    } catch (err) {
+      console.error('Fetch Lobby Error:', err);
     } finally {
       setLoading(false);
     }
@@ -247,6 +255,21 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
 
   useEffect(() => {
     fetchLobby();
+
+    const channel = supabase
+      .channel(`lobby_${lobbyId}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'lobbies', filter: `id=eq.${lobbyId}` },
+        (payload) => {
+          setLobby(payload.new as LobbyData);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [lobbyId]);
 
   const copyInviteLink = () => {
@@ -286,6 +309,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     <div className="min-h-screen bg-neutral-950 text-white py-8 px-4 font-sans">
       <div className="max-w-xl mx-auto space-y-6">
 
+        {/* Gamified Banner */}
         <div className="bg-gradient-to-r from-blue-900/40 via-purple-900/40 to-neutral-900 p-5 rounded-3xl border border-neutral-800 space-y-3">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-2">
@@ -319,6 +343,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           </div>
         </div>
 
+        {/* Match Celebration */}
         {isMatched ? (
           <div className="bg-gradient-to-br from-emerald-600 to-teal-700 text-white p-8 rounded-3xl shadow-2xl space-y-3 text-center border border-emerald-400/30">
             <div className="text-5xl animate-bounce">🎉</div>
