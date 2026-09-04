@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { supabase } from '@/lib/supabase';
@@ -89,7 +89,6 @@ function CheckoutForm({ lobbyId, role, onSuccess }: { lobbyId: string; role: 'HO
         const isHost = role === 'HOST';
         const addressData: AddressData = { name, street1: street, city, state, zip, phone };
 
-        // ONLY write the payment_intent_id to Supabase AFTER confirmation succeeds!
         const updateData = isHost
           ? { host_payment_intent_id: paymentIntent.id, user_a_address: addressData }
           : { partner_payment_intent_id: paymentIntent.id, user_b_address: addressData };
@@ -244,6 +243,9 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const [timeLeft, setTimeLeft] = useState(899);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
+  // Intent Lock Guard to prevent multiple creations
+  const intentCreatedRef = useRef<boolean>(false);
+
   useEffect(() => {
     const timer = setInterval(() => setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0)), 1000);
     return () => clearInterval(timer);
@@ -255,7 +257,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
-  const fetchLobby = async () => {
+  const initLobbyAndIntent = async () => {
     try {
       const { data, error } = await supabase.from('lobbies').select('*').eq('id', lobbyId).single();
       if (error || !data) {
@@ -273,7 +275,9 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
 
       const hasUserPaid = currentRole === 'HOST' ? !!data.host_payment_intent_id : !!data.partner_payment_intent_id;
 
-      if (!hasUserPaid && data.status !== 'MATCHED') {
+      // Lock Intent Creation to strictly ONE request per session
+      if (!hasUserPaid && data.status !== 'MATCHED' && !intentCreatedRef.current) {
+        intentCreatedRef.current = true;
         const res = await fetch('/api/create-payment-intent', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -295,7 +299,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   };
 
   useEffect(() => {
-    fetchLobby();
+    initLobbyAndIntent();
 
     const channel = supabase
       .channel(`lobby_${lobbyId}`)
@@ -454,7 +458,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
                 </h3>
                 {clientSecret ? (
                   <Elements stripe={stripePromise} options={{ clientSecret }}>
-                    <CheckoutForm lobbyId={lobbyId} role={role} onSuccess={fetchLobby} />
+                    <CheckoutForm lobbyId={lobbyId} role={role} onSuccess={initLobbyAndIntent} />
                   </Elements>
                 ) : (
                   <div className="py-6 text-center text-xs font-semibold text-neutral-500">
@@ -476,3 +480,4 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     </div>
   );
 }
+

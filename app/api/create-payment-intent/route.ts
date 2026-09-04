@@ -36,25 +36,6 @@ export async function POST(req: Request) {
       );
     }
 
-    const isHost = role === 'HOST';
-
-    // Prevent re-creating an intent if this role has ALREADY authorized their card
-    const existingIntentId = isHost ? lobby.host_payment_intent_id : lobby.partner_payment_intent_id;
-
-    if (existingIntentId) {
-      try {
-        const existingIntent = await stripe.paymentIntents.retrieve(existingIntentId);
-        if (existingIntent.status === 'requires_capture' || existingIntent.status === 'succeeded') {
-          return NextResponse.json(
-            { error: `${role} payment hold has already been authorized.` },
-            { status: 400, headers: corsHeaders }
-          );
-        }
-      } catch (e) {
-        // Fallthrough if retrieval fails
-      }
-    }
-
     // Precise pre-tax amount calculations in integer cents
     const itemPrice = Number(lobby.item_price) || 0;
     const itemPriceCents = Math.round(itemPrice * 100);
@@ -73,8 +54,9 @@ export async function POST(req: Request) {
     const totalAmountCents = Math.round(baseShareCents + platformFeeCents + stripeFeeCents);
     const validAmountCents = Math.max(50, totalAmountCents);
 
-    // Create a brand-new PaymentIntent for manual hold capture
-    // NOTE: We do NOT write this intent ID to Supabase yet!
+    const isHost = role === 'HOST';
+
+    // Create a fresh, isolated PaymentIntent strictly for manual capture
     const paymentIntent = await stripe.paymentIntents.create({
       amount: validAmountCents,
       currency: 'usd',
