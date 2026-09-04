@@ -23,7 +23,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // 1. Fetch Lobby Details
+    // 1. FETCH LOBBY DETAILS FROM SUPABASE
     const { data: lobby, error: fetchErr } = await supabase
       .from('lobbies')
       .select('*')
@@ -54,8 +54,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // 2. CAPTURE DUAL PAYMENT HOLDS
-    // Convert status from "requires_capture" to captured funds
+    // 2. CAPTURE DUAL PAYMENT HOLDS FROM STRIPE
     const [hostCapture, partnerCapture] = await Promise.all([
       stripe.paymentIntents.capture(host_payment_intent_id),
       stripe.paymentIntents.capture(partner_payment_intent_id),
@@ -111,7 +110,7 @@ export async function POST(req: Request) {
       },
     });
 
-    // 5. UPDATE DATABASE WITH MATCH STATUS & ISSUING CARD ID
+    // 5. UPDATE DATABASE WITH MATCH STATUS & VIRTUAL CARD REF
     const { error: updateErr } = await supabase
       .from('lobbies')
       .update({
@@ -125,10 +124,29 @@ export async function POST(req: Request) {
       console.error('Failed to update lobby with issuing card metadata:', updateErr);
     }
 
+    // 6. DISPATCH ASYNCHRONOUS CHECKOUT JOB TO RAILWAY PLAYWRIGHT WORKER
+    const railwayWorkerUrl = process.env.RAILWAY_WORKER_URL;
+    const workerSecret = process.env.WORKER_SECRET || 'bogo_secret_token_123';
+
+    if (railwayWorkerUrl) {
+      fetch(`${railwayWorkerUrl}/api/run-checkout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${workerSecret}`,
+        },
+        body: JSON.stringify({ lobbyId }),
+      }).catch((err) => {
+        console.error('Failed to dispatch checkout job to Railway worker:', err.message);
+      });
+    } else {
+      console.warn('RAILWAY_WORKER_URL is missing in environment variables. Automated checkout worker was not triggered.');
+    }
+
     return NextResponse.json(
       {
         success: true,
-        message: 'Dual holds captured and virtual card issued successfully!',
+        message: 'Dual holds captured, virtual card issued, and Playwright worker notified!',
         lobbyId,
         card: {
           id: virtualCard.id,
@@ -141,10 +159,11 @@ export async function POST(req: Request) {
       { headers: corsHeaders }
     );
   } catch (err: any) {
-    console.error('Confirm Match & Issuing Error:', err.message);
+    console.error('Confirm Match Error:', err.message);
     return NextResponse.json(
       { error: err.message || 'Internal Server Error' },
       { status: 500, headers: corsHeaders }
     );
   }
 }
+
