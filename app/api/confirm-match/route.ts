@@ -1,11 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { stripe } from '@/lib/stripe';
-import { sendMatchNotificationEmail } from '@/lib/email';
-
-// Force Next.js to treat this route strictly as dynamic at request time (fixes Vercel page data collection build error)
-export const dynamic = 'force-dynamic';
-export const runtime = 'nodejs';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -23,151 +18,132 @@ export async function POST(req: Request) {
 
     if (!lobbyId) {
       return NextResponse.json(
-        { error: 'Missing lobbyId parameter' },
+        { error: 'Missing required parameter: lobbyId' },
         { status: 400, headers: corsHeaders }
       );
     }
 
-    // Polling retry loop to handle Supabase DB propagation delay
-    let lobby = null;
-    for (let i = 0; i < 5; i++) {
-      const { data } = await supabase
-        .from('lobbies')
-        .select('*')
-        .eq('id', lobbyId)
-        .single();
+    // 1. Fetch Lobby Details
+    const { data: lobby, error: fetchErr } = await supabase
+      .from('lobbies')
+      .select('*')
+      .eq('id', lobbyId)
+      .single();
 
-      if (data) {
-        if (data.status === 'MATCHED') {
-          return NextResponse.json({ success: true, status: 'MATCHED' }, { headers: corsHeaders });
-        }
-
-        if (data.status === 'PROCESSING') {
-          return NextResponse.json({ success: true, status: 'PROCESSING' }, { headers: corsHeaders });
-        }
-
-        if (data.host_payment_intent_id && data.partner_payment_intent_id) {
-          lobby = data;
-          break;
-        }
-      }
-
-      await new Promise((res) => setTimeout(res, 500));
-      lobby = data;
-    }
-
-    if (!lobby) {
+    if (fetchErr || !lobby) {
       return NextResponse.json(
-        { error: 'Lobby not found in database' },
+        { error: 'Lobby record not found in database' },
         { status: 404, headers: corsHeaders }
       );
     }
 
-    const { host_payment_intent_id, partner_payment_intent_id } = lobby;
+    // Idempotency Check: Prevent duplicate captures or card creations
+    if (lobby.status === 'MATCHED' && lobby.issuing_card_id) {
+      return NextResponse.json(
+        { message: 'Lobby already matched and virtual card issued', cardId: lobby.issuing_card_id },
+        { headers: corsHeaders }
+      );
+    }
+
+    const { host_payment_intent_id, partner_payment_intent_id, item_price, deal_type } = lobby;
 
     if (!host_payment_intent_id || !partner_payment_intent_id) {
       return NextResponse.json(
-        {
-          error: `Missing payment hold: Host (${host_payment_intent_id ? 'OK' : 'MISSING'}), Partner (${partner_payment_intent_id ? 'OK' : 'MISSING'})`
-        },
+        { error: 'Both host and partner must authorize payment holds before issuing virtual card' },
         { status: 400, headers: corsHeaders }
       );
     }
 
-    // Optimistic Concurrency Check: Lock status to PROCESSING to prevent parallel captures
-    const { data: lockedLobby, error: lockError } = await supabase
-      .from('lobbies')
-      .update({ status: 'PROCESSING' })
-      .eq('id', lobbyId)
-      .eq('status', 'PENDING')
-      .select()
-      .single();
+    // 2. CAPTURE DUAL PAYMENT HOLDS
+    // Convert status from "requires_capture" to captured funds
+    const [hostCapture, partnerCapture] = await Promise.all([
+      stripe.paymentIntents.capture(host_payment_intent_id),
+      stripe.paymentIntents.capture(partner_payment_intent_id),
+    ]);
 
-    if (lockError || !lockedLobby) {
-      // Another concurrent request is already capturing this match
-      return NextResponse.json({ success: true, status: 'PROCESSING' }, { headers: corsHeaders });
-    }
-
-    const captureSafely = async (intentId: string) => {
-      const intent = await stripe.paymentIntents.retrieve(intentId);
-      if (intent.status === 'requires_capture') {
-        await stripe.paymentIntents.capture(intentId);
-      }
-    };
-
-    // Atomic Dual-Capture Logic with Rollback Protection
-    let hostCaptured = false;
-    let partnerCaptured = false;
-
-    try {
-      // Step 1: Capture Host hold
-      await captureSafely(host_payment_intent_id);
-      hostCaptured = true;
-
-      // Step 2: Capture Partner hold
-      await captureSafely(partner_payment_intent_id);
-      partnerCaptured = true;
-
-      // Step 3: Mark Lobby as MATCHED
-      const { data: updatedLobby, error: updateError } = await supabase
-        .from('lobbies')
-        .update({ status: 'MATCHED' })
-        .eq('id', lobbyId)
-        .select()
-        .single();
-
-      if (updateError || !updatedLobby) {
-        throw new Error('Failed to update lobby status to MATCHED in database');
-      }
-
-      // Step 4: Trigger automated merchant notification email
-      await sendMatchNotificationEmail({
-        lobbyId: updatedLobby.id,
-        itemName: updatedLobby.item_name,
-        itemPrice: updatedLobby.item_price,
-        userAAddress: updatedLobby.user_a_address,
-        userBAddress: updatedLobby.user_b_address,
-        userAVariant: updatedLobby.user_a_variant,
-        userBVariant: updatedLobby.user_b_variant,
-      }).catch((emailErr) => {
-        console.error('Failed sending match email notification:', emailErr.message);
-      });
-
+    if (hostCapture.status !== 'succeeded' || partnerCapture.status !== 'succeeded') {
       return NextResponse.json(
-        { success: true, status: 'MATCHED' },
-        { headers: corsHeaders }
-      );
-    } catch (captureErr: any) {
-      console.error('Dual Capture Error encountered during process:', captureErr.message);
-
-      // Rollback Handling: If one payment captured but the other failed, refund the captured charge immediately
-      if (hostCaptured && !partnerCaptured) {
-        console.warn('Refunding Host intent due to Partner capture failure:', host_payment_intent_id);
-        await stripe.refunds.create({ payment_intent: host_payment_intent_id }).catch((e) => {
-          console.error('Critical: Failed to refund Host hold:', e.message);
-        });
-      } else if (!hostCaptured && partnerCaptured) {
-        console.warn('Refunding Partner intent due to Host capture failure:', partner_payment_intent_id);
-        await stripe.refunds.create({ payment_intent: partner_payment_intent_id }).catch((e) => {
-          console.error('Critical: Failed to refund Partner hold:', e.message);
-        });
-      }
-
-      // Mark Lobby status as FAILED so client UI can inform users
-      await supabase
-        .from('lobbies')
-        .update({ status: 'FAILED' })
-        .eq('id', lobbyId);
-
-      return NextResponse.json(
-        { error: `Payment capture failed: ${captureErr.message}. Any authorized charges were refunded.` },
+        { error: 'Failed capturing one or both payment holds' },
         { status: 500, headers: corsHeaders }
       );
     }
-  } catch (err: any) {
-    console.error('Confirm match server route error:', err.message);
+
+    // 3. CALCULATE VIRTUAL CARD SPENDING LIMIT
+    const itemPriceCents = Math.round((Number(item_price) || 0) * 100);
+    const isBogo50 = deal_type === 'BOGO_50' || deal_type === 'BUY_1_GET_1_50_OFF';
+
+    // Total cost on merchant site + 8% buffer for estimated local tax/shipping
+    const dealTotalCents = isBogo50 ? Math.round(itemPriceCents * 1.5) : itemPriceCents;
+    const spendingLimitCents = Math.round(dealTotalCents * 1.08);
+
+    // 4. CREATE STRIPE ISSUING CARDHOLDER & SINGLE-USE VIRTUAL CARD
+    const cardholder = await stripe.issuing.cardholders.create({
+      name: `BOGO Split Match #${lobbyId.slice(0, 8)}`,
+      type: 'individual',
+      email: 'fulfillment@bogosplit.com',
+      billing: {
+        address: {
+          line1: '123 Tech Way',
+          city: 'New York',
+          state: 'NY',
+          postal_code: '10001',
+          country: 'US',
+        },
+      },
+    });
+
+    const virtualCard = await stripe.issuing.cards.create({
+      cardholder: cardholder.id,
+      currency: 'usd',
+      type: 'virtual',
+      status: 'active',
+      spending_controls: {
+        spending_limits: [
+          {
+            amount: spendingLimitCents,
+            interval: 'all_time',
+          },
+        ],
+      },
+      metadata: {
+        lobbyId,
+        itemName: lobby.item_name,
+      },
+    });
+
+    // 5. UPDATE DATABASE WITH MATCH STATUS & ISSUING CARD ID
+    const { error: updateErr } = await supabase
+      .from('lobbies')
+      .update({
+        status: 'MATCHED',
+        issuing_card_id: virtualCard.id,
+        virtual_card_last4: virtualCard.last4,
+      })
+      .eq('id', lobbyId);
+
+    if (updateErr) {
+      console.error('Failed to update lobby with issuing card metadata:', updateErr);
+    }
+
     return NextResponse.json(
-      { error: err.message || 'Failed processing dual-hold capture' },
+      {
+        success: true,
+        message: 'Dual holds captured and virtual card issued successfully!',
+        lobbyId,
+        card: {
+          id: virtualCard.id,
+          last4: virtualCard.last4,
+          expMonth: virtualCard.exp_month,
+          expYear: virtualCard.exp_year,
+          spendingLimit: spendingLimitCents / 100,
+        },
+      },
+      { headers: corsHeaders }
+    );
+  } catch (err: any) {
+    console.error('Confirm Match & Issuing Error:', err.message);
+    return NextResponse.json(
+      { error: err.message || 'Internal Server Error' },
       { status: 500, headers: corsHeaders }
     );
   }
