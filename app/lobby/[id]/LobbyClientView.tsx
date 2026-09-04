@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, memo } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { supabase } from '@/lib/supabase';
@@ -30,9 +30,19 @@ export interface LobbyData {
 }
 
 // -------------------------------------------------------------
-// ISOLATED CHECKOUT FORM (Prevents re-renders from mutating Intent)
+// ISOLATED CHECKOUT FORM
 // -------------------------------------------------------------
-function CheckoutForm({ lobbyId, role, onSuccess }: { lobbyId: string; role: 'HOST' | 'PARTNER'; onSuccess: () => void }) {
+const CheckoutForm = memo(function CheckoutForm({
+  lobbyId,
+  role,
+  onSuccess,
+  onSubmittingStateChange,
+}: {
+  lobbyId: string;
+  role: 'HOST' | 'PARTNER';
+  onSuccess: () => void;
+  onSubmittingStateChange: (isSubmitting: boolean) => void;
+}) {
   const stripe = useStripe();
   const elements = useElements();
 
@@ -56,6 +66,7 @@ function CheckoutForm({ lobbyId, role, onSuccess }: { lobbyId: string; role: 'HO
     }
 
     setLoading(true);
+    onSubmittingStateChange(true);
     setErrorMessage('');
     setRawErrorDetails('');
 
@@ -83,6 +94,7 @@ function CheckoutForm({ lobbyId, role, onSuccess }: { lobbyId: string; role: 'HO
         setErrorMessage(detailedMessage);
         setRawErrorDetails(`${type} ${code} ${declineCode} ${param}`.trim());
         setLoading(false);
+        onSubmittingStateChange(false);
         return;
       }
 
@@ -123,12 +135,14 @@ function CheckoutForm({ lobbyId, role, onSuccess }: { lobbyId: string; role: 'HO
         onSuccess();
       } else {
         setErrorMessage(`Payment intent in unexpected state: ${paymentIntent?.status}`);
+        setLoading(false);
+        onSubmittingStateChange(false);
       }
     } catch (err: any) {
       console.error('Checkout Submission Catch Error:', err);
       setErrorMessage(err.message || 'An unexpected client-side error occurred');
-    } finally {
       setLoading(false);
+      onSubmittingStateChange(false);
     }
   };
 
@@ -235,20 +249,37 @@ function CheckoutForm({ lobbyId, role, onSuccess }: { lobbyId: string; role: 'HO
       </button>
     </form>
   );
-}
+});
 
 // -------------------------------------------------------------
-// STABLE STRIPE ELEMENTS WRAPPER (Prevents re-instantiating Elements)
+// STABLE STRIPE ELEMENTS WRAPPER
 // -------------------------------------------------------------
-function StripeCheckoutWrapper({ lobbyId, role, clientSecret, onSuccess }: { lobbyId: string; role: 'HOST' | 'PARTNER'; clientSecret: string; onSuccess: () => void }) {
+const StripeCheckoutWrapper = memo(function StripeCheckoutWrapper({
+  lobbyId,
+  role,
+  clientSecret,
+  onSuccess,
+  onSubmittingStateChange,
+}: {
+  lobbyId: string;
+  role: 'HOST' | 'PARTNER';
+  clientSecret: string;
+  onSuccess: () => void;
+  onSubmittingStateChange: (isSubmitting: boolean) => void;
+}) {
   const optionsRef = useRef({ clientSecret });
 
   return (
     <Elements stripe={stripePromise} options={optionsRef.current}>
-      <CheckoutForm lobbyId={lobbyId} role={role} onSuccess={onSuccess} />
+      <CheckoutForm
+        lobbyId={lobbyId}
+        role={role}
+        onSuccess={onSuccess}
+        onSubmittingStateChange={onSubmittingStateChange}
+      />
     </Elements>
   );
-}
+});
 
 export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const [lobby, setLobby] = useState<LobbyData | null>(null);
@@ -260,6 +291,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   const intentCreatedRef = useRef<boolean>(false);
+  const isSubmittingRef = useRef<boolean>(false);
 
   useEffect(() => {
     const timer = setInterval(() => setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0)), 1000);
@@ -321,7 +353,10 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'lobbies', filter: `id=eq.${lobbyId}` },
         (payload) => {
-          setLobby(payload.new as LobbyData);
+          // Ignore realtime updates if form is actively submitting to prevent re-render mid-submission
+          if (!isSubmittingRef.current) {
+            setLobby(payload.new as LobbyData);
+          }
         }
       )
       .subscribe();
@@ -476,6 +511,9 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
                     role={role}
                     clientSecret={clientSecret}
                     onSuccess={initLobbyAndIntent}
+                    onSubmittingStateChange={(submitting) => {
+                      isSubmittingRef.current = submitting;
+                    }}
                   />
                 ) : (
                   <div className="py-6 text-center text-xs font-semibold text-neutral-500">
