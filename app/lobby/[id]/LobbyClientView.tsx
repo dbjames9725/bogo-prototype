@@ -47,7 +47,7 @@ function CheckoutForm({ lobbyId, role, onSuccess }: { lobbyId: string; role: 'HO
     e.preventDefault();
 
     if (!stripe || !elements) {
-      setErrorMessage('Stripe SDK loading...');
+      setErrorMessage('Stripe SDK is initializing. Please wait a moment and try again.');
       return;
     }
 
@@ -55,13 +55,20 @@ function CheckoutForm({ lobbyId, role, onSuccess }: { lobbyId: string; role: 'HO
     setErrorMessage('');
 
     try {
+      // Dynamic window return URL resolution
+      const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://bogo-prototype-wheat.vercel.app';
+      const redirectUrl = `${currentOrigin}/lobby/${lobbyId}`;
+
       const { error, paymentIntent } = await stripe.confirmPayment({
         elements,
-        confirmParams: { return_url: typeof window !== 'undefined' ? window.location.href : '' },
+        confirmParams: {
+          return_url: redirectUrl,
+        },
         redirect: 'if_required',
       });
 
       if (error) {
+        console.error('Stripe Confirm Payment Error details:', error);
         setErrorMessage(error.message || 'Payment authorization failed');
         setLoading(false);
         return;
@@ -75,7 +82,11 @@ function CheckoutForm({ lobbyId, role, onSuccess }: { lobbyId: string; role: 'HO
           ? { host_payment_intent_id: paymentIntent.id, user_a_address: addressData }
           : { partner_payment_intent_id: paymentIntent.id, user_b_address: addressData };
 
-        await supabase.from('lobbies').update(updateData).eq('id', lobbyId);
+        const { error: dbErr } = await supabase.from('lobbies').update(updateData).eq('id', lobbyId);
+
+        if (dbErr) {
+          throw new Error('Database update failed: ' + dbErr.message);
+        }
 
         if (isHost && typeof window !== 'undefined') {
           localStorage.setItem(`hosted_${lobbyId}`, 'true');
@@ -83,20 +94,25 @@ function CheckoutForm({ lobbyId, role, onSuccess }: { lobbyId: string; role: 'HO
 
         if (!isHost) {
           await new Promise((res) => setTimeout(res, 300));
-          await fetch('/api/confirm-match', {
+          const confirmRes = await fetch('/api/confirm-match', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ lobbyId }),
           });
+
+          if (!confirmRes.ok) {
+            const confirmData = await confirmRes.json();
+            throw new Error(confirmData.error || 'Failed capturing dual payment holds');
+          }
         }
 
         onSuccess();
       } else {
-        setErrorMessage('Unexpected payment status. Please try again.');
+        setErrorMessage('Unexpected payment status. Please try submitting again.');
       }
     } catch (err: any) {
-      console.error('Checkout Form Error:', err);
-      setErrorMessage(err.message || 'Error completing checkout');
+      console.error('Checkout Submission Error:', err);
+      setErrorMessage(err.message || 'An error occurred while confirming payment authorization');
     } finally {
       setLoading(false);
     }
@@ -223,27 +239,33 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
 
   const fetchLobby = async () => {
     try {
-      const { data } = await supabase.from('lobbies').select('*').eq('id', lobbyId).single();
-      if (data) {
-        setLobby(data);
+      const { data, error } = await supabase.from('lobbies').select('*').eq('id', lobbyId).single();
+      if (error || !data) {
+        setLoading(false);
+        return;
+      }
 
-        // CLEAN ROLE EVALUATION:
-        // Host status ONLY applies if user explicitly created it in local storage AND host intent is empty.
-        const isHostStored = typeof window !== 'undefined' && localStorage.getItem(`hosted_${lobbyId}`) === 'true';
-        const isHost = isHostStored && !data.host_payment_intent_id;
-        const currentRole = isHost ? 'HOST' : 'PARTNER';
-        setRole(currentRole);
+      setLobby(data);
 
-        const hasUserPaid = currentRole === 'HOST' ? !!data.host_payment_intent_id : !!data.partner_payment_intent_id;
+      // Clean role determination:
+      // If host_payment_intent_id is missing AND localStorage says hosted_lobbyId, user is HOST.
+      // Otherwise, user is PARTNER.
+      const isHostStored = typeof window !== 'undefined' && localStorage.getItem(`hosted_${lobbyId}`) === 'true';
+      const isHost = isHostStored && !data.host_payment_intent_id;
+      const currentRole = isHost ? 'HOST' : 'PARTNER';
+      setRole(currentRole);
 
-        if (!hasUserPaid && data.status !== 'MATCHED') {
-          const res = await fetch('/api/create-payment-intent', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ lobbyId, role: currentRole }),
-          });
-          const intentData = await res.json();
-          if (intentData.clientSecret) setClientSecret(intentData.clientSecret);
+      const hasUserPaid = currentRole === 'HOST' ? !!data.host_payment_intent_id : !!data.partner_payment_intent_id;
+
+      if (!hasUserPaid && data.status !== 'MATCHED') {
+        const res = await fetch('/api/create-payment-intent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lobbyId, role: currentRole }),
+        });
+        const intentData = await res.json();
+        if (intentData.clientSecret) {
+          setClientSecret(intentData.clientSecret);
         }
       }
     } catch (err) {
