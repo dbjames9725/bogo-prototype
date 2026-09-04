@@ -93,8 +93,6 @@ const CheckoutForm = memo(function CheckoutForm({
 
         setErrorMessage(detailedMessage);
         setRawErrorDetails(`${type} ${code} ${declineCode} ${param}`.trim());
-        setLoading(false);
-        onSubmittingStateChange(false);
         return;
       }
 
@@ -132,15 +130,15 @@ const CheckoutForm = memo(function CheckoutForm({
           }
         }
 
-        onSuccess();
+        // Trigger successful state update in parent
+        await onSuccess();
       } else {
         setErrorMessage(`Payment intent in unexpected state: ${paymentIntent?.status}`);
-        setLoading(false);
-        onSubmittingStateChange(false);
       }
     } catch (err: any) {
       console.error('Checkout Submission Catch Error:', err);
       setErrorMessage(err.message || 'An unexpected client-side error occurred');
+    } finally {
       setLoading(false);
       onSubmittingStateChange(false);
     }
@@ -264,7 +262,7 @@ const StripeCheckoutWrapper = memo(function StripeCheckoutWrapper({
   lobbyId: string;
   role: 'HOST' | 'PARTNER';
   clientSecret: string;
-  onSuccess: () => void;
+  onSuccess: () => Promise<void>;
   onSubmittingStateChange: (isSubmitting: boolean) => void;
 }) {
   const optionsRef = useRef({ clientSecret });
@@ -304,48 +302,48 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
-  const initLobbyAndIntent = async () => {
-    try {
-      const { data, error } = await supabase.from('lobbies').select('*').eq('id', lobbyId).single();
-      if (error || !data) {
-        setFetchError('Lobby not found in database.');
-        setLoading(false);
-        return;
-      }
-
-      setLobby(data);
-
-      const isHostStored = typeof window !== 'undefined' && localStorage.getItem(`hosted_${lobbyId}`) === 'true';
-      const isHost = isHostStored && !data.host_payment_intent_id;
-      const currentRole = isHost ? 'HOST' : 'PARTNER';
-      setRole(currentRole);
-
-      const hasUserPaid = currentRole === 'HOST' ? !!data.host_payment_intent_id : !!data.partner_payment_intent_id;
-
-      if (!hasUserPaid && data.status !== 'MATCHED' && !intentCreatedRef.current) {
-        intentCreatedRef.current = true;
-        const res = await fetch('/api/create-payment-intent', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ lobbyId, role: currentRole }),
-        });
-        const intentData = await res.json();
-        if (intentData.clientSecret) {
-          setClientSecret(intentData.clientSecret);
-        } else if (intentData.error) {
-          setFetchError(`Payment Intent Error: ${intentData.error}`);
-        }
-      }
-    } catch (err: any) {
-      console.error('Fetch Lobby Catch Error:', err);
-      setFetchError(err.message || 'Error fetching lobby data.');
-    } finally {
+  const fetchLobbyState = async () => {
+    const { data, error } = await supabase.from('lobbies').select('*').eq('id', lobbyId).single();
+    if (error || !data) {
+      setFetchError('Lobby not found in database.');
       setLoading(false);
+      return;
     }
+
+    setLobby(data);
+
+    const isHostStored = typeof window !== 'undefined' && localStorage.getItem(`hosted_${lobbyId}`) === 'true';
+    const isHost = isHostStored || !data.host_payment_intent_id;
+    const currentRole = isHost ? 'HOST' : 'PARTNER';
+    setRole(currentRole);
+
+    const hasUserPaid = currentRole === 'HOST' ? !!data.host_payment_intent_id : !!data.partner_payment_intent_id;
+
+    if (!hasUserPaid && data.status !== 'MATCHED' && !intentCreatedRef.current) {
+      intentCreatedRef.current = true;
+      const res = await fetch('/api/create-payment-intent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lobbyId, role: currentRole }),
+      });
+      const intentData = await res.json();
+      if (intentData.clientSecret) {
+        setClientSecret(intentData.clientSecret);
+      } else if (intentData.error) {
+        setFetchError(`Payment Intent Error: ${intentData.error}`);
+      }
+    }
+    setLoading(false);
+  };
+
+  const handlePaymentSuccess = async () => {
+    intentCreatedRef.current = false;
+    setClientSecret(null);
+    await fetchLobbyState();
   };
 
   useEffect(() => {
-    initLobbyAndIntent();
+    fetchLobbyState();
 
     const channel = supabase
       .channel(`lobby_${lobbyId}`)
@@ -353,7 +351,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'lobbies', filter: `id=eq.${lobbyId}` },
         (payload) => {
-          // Ignore realtime updates if form is actively submitting to prevent re-render mid-submission
           if (!isSubmittingRef.current) {
             setLobby(payload.new as LobbyData);
           }
@@ -510,7 +507,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
                     lobbyId={lobbyId}
                     role={role}
                     clientSecret={clientSecret}
-                    onSuccess={initLobbyAndIntent}
+                    onSuccess={handlePaymentSuccess}
                     onSubmittingStateChange={(submitting) => {
                       isSubmittingRef.current = submitting;
                     }}
