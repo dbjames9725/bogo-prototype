@@ -23,6 +23,7 @@ export async function POST(req: Request) {
       );
     }
 
+    // Fetch the lobby record
     const { data: lobby, error } = await supabase
       .from('lobbies')
       .select('*')
@@ -36,6 +37,27 @@ export async function POST(req: Request) {
       );
     }
 
+    const isHost = role === 'HOST';
+
+    // 1. Check if this role ALREADY completed their payment hold
+    const existingIntentId = isHost ? lobby.host_payment_intent_id : lobby.partner_payment_intent_id;
+
+    if (existingIntentId) {
+      try {
+        const existingIntent = await stripe.paymentIntents.retrieve(existingIntentId);
+        // If it's already authorized/succeeded, don't re-confirm it!
+        if (existingIntent.status === 'requires_capture' || existingIntent.status === 'succeeded') {
+          return NextResponse.json(
+            { error: `${role} payment hold has already been authorized.` },
+            { status: 400, headers: corsHeaders }
+          );
+        }
+      } catch (e) {
+        // If retrieval fails, proceed to create a new one
+      }
+    }
+
+    // 2. Calculate accurate amounts in integer cents
     const itemPrice = Number(lobby.item_price) || 0;
     const itemPriceCents = Math.round(itemPrice * 100);
 
@@ -53,21 +75,18 @@ export async function POST(req: Request) {
     const totalAmountCents = Math.round(baseShareCents + platformFeeCents + stripeFeeCents);
     const validAmountCents = Math.max(50, totalAmountCents);
 
-    const isHost = role === 'HOST';
-
-    // Generate a fresh PaymentIntent
+    // 3. ALWAYS create a BRAND NEW PaymentIntent dedicated to this specific role
     const paymentIntent = await stripe.paymentIntents.create({
       amount: validAmountCents,
       currency: 'usd',
       capture_method: 'manual',
-      metadata: { lobbyId, role, dealType },
+      metadata: {
+        lobbyId,
+        role,
+        dealType,
+        createdFor: isHost ? 'Host_Share' : 'Partner_Share'
+      },
     });
-
-    const updateColumn = isHost
-      ? { host_payment_intent_id: paymentIntent.id }
-      : { partner_payment_intent_id: paymentIntent.id };
-
-    await supabase.from('lobbies').update(updateColumn).eq('id', lobbyId);
 
     return NextResponse.json(
       {
