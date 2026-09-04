@@ -42,24 +42,26 @@ function CheckoutForm({ lobbyId, role, onSuccess }: { lobbyId: string; role: 'HO
 
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [rawErrorDetails, setRawErrorDetails] = useState<string>('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!stripe || !elements) {
-      setErrorMessage('Stripe SDK is initializing. Please wait a moment and try again.');
+      setErrorMessage('Stripe SDK has not fully initialized.');
       return;
     }
 
     setLoading(true);
     setErrorMessage('');
+    setRawErrorDetails('');
 
     try {
-      // Dynamic window return URL resolution
       const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://bogo-prototype-wheat.vercel.app';
       const redirectUrl = `${currentOrigin}/lobby/${lobbyId}`;
 
-      const { error, paymentIntent } = await stripe.confirmPayment({
+      // Trigger payment confirmation
+      const result = await stripe.confirmPayment({
         elements,
         confirmParams: {
           return_url: redirectUrl,
@@ -67,12 +69,23 @@ function CheckoutForm({ lobbyId, role, onSuccess }: { lobbyId: string; role: 'HO
         redirect: 'if_required',
       });
 
-      if (error) {
-        console.error('Stripe Confirm Payment Error details:', error);
-        setErrorMessage(error.message || 'Payment authorization failed');
+      if (result.error) {
+        console.error('FULL STRIPE CONFIRMATION ERROR OBJECT:', result.error);
+
+        // Capture all diagnostic fields from Stripe
+        const detailedMessage = result.error.message || 'Unknown Stripe Error';
+        const code = result.error.code ? `[Code: ${result.error.code}]` : '';
+        const declineCode = result.error.decline_code ? `[Decline Code: ${result.error.decline_code}]` : '';
+        const param = result.error.param ? `[Param: ${result.error.param}]` : '';
+        const type = result.error.type ? `[Type: ${result.error.type}]` : '';
+
+        setErrorMessage(detailedMessage);
+        setRawErrorDetails(`${type} ${code} ${declineCode} ${param}`.trim());
         setLoading(false);
         return;
       }
+
+      const paymentIntent = result.paymentIntent;
 
       if (paymentIntent && (paymentIntent.status === 'requires_capture' || paymentIntent.status === 'succeeded')) {
         const isHost = role === 'HOST';
@@ -85,7 +98,7 @@ function CheckoutForm({ lobbyId, role, onSuccess }: { lobbyId: string; role: 'HO
         const { error: dbErr } = await supabase.from('lobbies').update(updateData).eq('id', lobbyId);
 
         if (dbErr) {
-          throw new Error('Database update failed: ' + dbErr.message);
+          throw new Error('Database sync failed: ' + dbErr.message);
         }
 
         if (isHost && typeof window !== 'undefined') {
@@ -108,11 +121,11 @@ function CheckoutForm({ lobbyId, role, onSuccess }: { lobbyId: string; role: 'HO
 
         onSuccess();
       } else {
-        setErrorMessage('Unexpected payment status. Please try submitting again.');
+        setErrorMessage(`Payment intent in unexpected state: ${paymentIntent?.status}`);
       }
     } catch (err: any) {
-      console.error('Checkout Submission Error:', err);
-      setErrorMessage(err.message || 'An error occurred while confirming payment authorization');
+      console.error('Checkout Submission Catch Error:', err);
+      setErrorMessage(err.message || 'An unexpected client-side error occurred');
     } finally {
       setLoading(false);
     }
@@ -202,15 +215,20 @@ function CheckoutForm({ lobbyId, role, onSuccess }: { lobbyId: string; role: 'HO
       </div>
 
       {errorMessage && (
-        <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs rounded-xl font-semibold">
-          ⚠️ {errorMessage}
+        <div className="p-4 bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs rounded-xl font-semibold space-y-1">
+          <div className="font-bold text-sm">⚠️ {errorMessage}</div>
+          {rawErrorDetails && (
+            <div className="text-[11px] text-rose-300/80 font-mono bg-black/40 p-2 rounded border border-rose-500/20 break-all">
+              Diagnostics: {rawErrorDetails}
+            </div>
+          )}
         </div>
       )}
 
       <button
         type="submit"
         disabled={!stripe || loading}
-        className="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-extrabold rounded-xl shadow-lg transition duration-200 text-base cursor-pointer transform active:scale-95"
+        className="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-extrabold rounded-xl shadow-lg transition duration-200 text-base cursor-pointer transform active:scale-95 disabled:opacity-50"
       >
         {loading ? '⚡ Securing Hold...' : `🚀 Authorize & Claim ${role === 'HOST' ? 'Host' : 'Partner'} Share`}
       </button>
@@ -225,6 +243,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
   const [timeLeft, setTimeLeft] = useState(899);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   useEffect(() => {
     const timer = setInterval(() => setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0)), 1000);
@@ -241,15 +260,13 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     try {
       const { data, error } = await supabase.from('lobbies').select('*').eq('id', lobbyId).single();
       if (error || !data) {
+        setFetchError('Lobby not found in database.');
         setLoading(false);
         return;
       }
 
       setLobby(data);
 
-      // Clean role determination:
-      // If host_payment_intent_id is missing AND localStorage says hosted_lobbyId, user is HOST.
-      // Otherwise, user is PARTNER.
       const isHostStored = typeof window !== 'undefined' && localStorage.getItem(`hosted_${lobbyId}`) === 'true';
       const isHost = isHostStored && !data.host_payment_intent_id;
       const currentRole = isHost ? 'HOST' : 'PARTNER';
@@ -266,10 +283,13 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
         const intentData = await res.json();
         if (intentData.clientSecret) {
           setClientSecret(intentData.clientSecret);
+        } else if (intentData.error) {
+          setFetchError(`Payment Intent Error: ${intentData.error}`);
         }
       }
-    } catch (err) {
-      console.error('Fetch Lobby Error:', err);
+    } catch (err: any) {
+      console.error('Fetch Lobby Catch Error:', err);
+      setFetchError(err.message || 'Error fetching lobby data.');
     } finally {
       setLoading(false);
     }
@@ -304,7 +324,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
 
   if (loading || !lobby) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-neutral-950 text-neutral-400">
+      <div className="min-h-screen flex items-center justify-center bg-neutral-950 text-neutral-400 font-sans">
         <div className="flex items-center gap-3 bg-neutral-900 p-6 rounded-2xl border border-neutral-800">
           <div className="w-5 h-5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
           <span className="font-bold text-sm">Initializing Gamified Lobby...</span>
@@ -364,6 +384,12 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
             </div>
           </div>
         </div>
+
+        {fetchError && (
+          <div className="p-4 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs rounded-xl font-bold">
+            ⚠️ {fetchError}
+          </div>
+        )}
 
         {/* Match Celebration */}
         {isMatched ? (
