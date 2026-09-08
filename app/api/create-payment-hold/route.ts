@@ -16,18 +16,14 @@ export async function POST(req: Request) {
       );
     }
 
-    // Stripe enforces a strict maximum length (22 chars) for statement descriptors.
-    // We truncate the lobbyId to ensure "BOGO " + 8-char ID stays well under 22 characters.
     const shortLobbyId = String(lobbyId).replace(/[^a-zA-Z0-9]/g, '').substring(0, 8);
-    const statementDescriptor = `BOGO ${shortLobbyId}`;
 
-    // Create a PaymentIntent with manual capture (Authorization Hold)
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(Number(amount) * 100), // convert dollars to cents
+      amount: Math.round(Number(amount) * 100),
       currency: 'usd',
-      capture_method: 'manual', // Places a hold instead of charging immediately
+      capture_method: 'manual',
       description: `BOGO Hold #${shortLobbyId}`,
-      statement_descriptor_suffix: statementDescriptor,
+      statement_descriptor_suffix: `BOGO ${shortLobbyId}`,
       receipt_email: userEmail || undefined,
       metadata: {
         lobbyId: String(lobbyId),
