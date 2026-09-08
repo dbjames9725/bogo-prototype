@@ -4,7 +4,6 @@ import Stripe from 'stripe';
 import { stripe } from '@/lib/stripe';
 import { supabase } from '@/lib/supabase';
 
-// Disable Next.js body parsing so Stripe can verify the raw request signature
 export const runtime = 'nodejs';
 
 export async function POST(req: Request) {
@@ -36,35 +35,40 @@ export async function POST(req: Request) {
 
   try {
     switch (event.type) {
-      // Triggered when a manual-capture PaymentIntent authorization succeeds (Hold placed)
+      // Triggered when a manual-capture PaymentIntent hold is successfully placed
       case 'payment_intent.amount_capturable_updated': {
         const paymentIntent = event.data.object as Stripe.PaymentIntent;
-        const { lobbyId } = paymentIntent.metadata || {};
+        const { lobbyId, role } = paymentIntent.metadata || {};
 
         if (!lobbyId) {
           console.warn(`PaymentIntent ${paymentIntent.id} missing lobbyId metadata.`);
           break;
         }
 
-        // Fetch current lobby state
-        const { data: lobby, error } = await supabase
+        // 1. Assign Payment Intent ID to DB based on participant role
+        const updateField =
+          role?.toUpperCase() === 'HOST'
+            ? { host_payment_intent_id: paymentIntent.id }
+            : { partner_payment_intent_id: paymentIntent.id };
+
+        const { data: updatedLobby, error: updateError } = await supabase
           .from('lobbies')
-          .select('*')
+          .update(updateField)
           .eq('id', lobbyId)
+          .select('*')
           .single();
 
-        if (error || !lobby) {
-          console.error(`Lobby ${lobbyId} not found during webhook processing`);
+        if (updateError || !updatedLobby) {
+          console.error(`Failed updating lobby ${lobbyId} with payment intent ID:`, updateError);
           break;
         }
 
-        // Check if both holds are present in DB and ready for capture
+        // 2. Check if BOTH holds are now present in DB & trigger match
         if (
-          lobby.status === 'PENDING' &&
-          lobby.host_payment_intent_id &&
-          lobby.partner_payment_intent_id
+          updatedLobby.status === 'PENDING' &&
+          updatedLobby.host_payment_intent_id &&
+          updatedLobby.partner_payment_intent_id
         ) {
-          // Trigger internal match confirmation asynchronously
           const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
           await fetch(`${baseUrl}/api/confirm-match`, {
             method: 'POST',
@@ -75,7 +79,7 @@ export async function POST(req: Request) {
         break;
       }
 
-      // Triggered if a payment hold is canceled or expires (7-day Stripe hold limit)
+      // Triggered if a hold is canceled or expires after 7 days
       case 'payment_intent.canceled': {
         const paymentIntent = event.data.object as Stripe.PaymentIntent;
         const { lobbyId } = paymentIntent.metadata || {};
@@ -90,7 +94,6 @@ export async function POST(req: Request) {
         break;
       }
 
-      // Optional failure logger
       case 'payment_intent.payment_failed': {
         const paymentIntent = event.data.object as Stripe.PaymentIntent;
         console.warn(`Payment authorization failed for intent ${paymentIntent.id}: ${paymentIntent.last_payment_error?.message}`);

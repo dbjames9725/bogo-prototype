@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>BOGO Split Lobbies</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <span class="logo-icon">⚡</span>
+        <div>
+          <h1 class="title">BOGO Split Lobbies</h1>
+          <p class="subtitle">Live 50/50 Deal Matches</p>
+        </div>
+      </div>
+      <button id="refreshBtn" class="refresh-btn" title="Refresh Lobbies">🔄</button>
+    </header>
+
+    <!-- Filter Pills -->
+    <div className="filter-bar">
+      <span class="badge">+250 BOGO XP ACTIVE</span>
+    </div>
+
+    <!-- Active Lobbies List Container -->
+    <main id="lobbiesContainer" class="lobbies-list">
+      <div class="loading-state">
+        <div class="spinner"></div>
+        <span>Fetching live BOGO deals...</span>
+      </div>
+    </main>
+
+    <!-- Footer CTA -->
+    <footer class="footer">
+      <button id="createCustomLobbyBtn" class="primary-btn">
+        <span>➕ Create Custom BOGO Lobby</span>
+      </button>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

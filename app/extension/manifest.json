@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "BOGO Split - Universal Deal Buddy",
+  "version": "1.0.0",
+  "description": "Split BOGO deals 50/50 with matching shoppers on any e-commerce site.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "notifications",
+    "alarms"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "BOGO Split Dashboard",
+    "default_popup": "popup.html"
+  }
+}
