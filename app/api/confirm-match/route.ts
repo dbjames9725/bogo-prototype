@@ -75,9 +75,12 @@ export async function POST(req: Request) {
     const dealTotalCents = isBogo50 ? Math.round(itemPriceCents * 1.5) : itemPriceCents;
     const spendingLimitCents = Math.round(dealTotalCents * 1.08);
 
+    // Shortened lobby ID for Stripe Issuing string constraints
+    const shortLobbyId = String(lobbyId).replace(/[^a-zA-Z0-9]/g, '').substring(0, 8);
+
     // 4. CREATE STRIPE ISSUING CARDHOLDER & SINGLE-USE VIRTUAL CARD
     const cardholder = await stripe.issuing.cardholders.create({
-      name: `BOGO Split Match #${lobbyId.slice(0, 8)}`,
+      name: `BOGO #${shortLobbyId}`, // Safe 13-character name
       type: 'individual',
       email: 'fulfillment@bogosplit.com',
       billing: {
@@ -105,8 +108,8 @@ export async function POST(req: Request) {
         ],
       },
       metadata: {
-        lobbyId,
-        itemName: lobby.item_name,
+        lobbyId: String(lobbyId),
+        itemName: String(lobby.item_name || 'BOGO Item'),
       },
     });
 
@@ -166,4 +169,3 @@ export async function POST(req: Request) {
     );
   }
 }
-
