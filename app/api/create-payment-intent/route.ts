@@ -56,11 +56,16 @@ export async function POST(req: Request) {
 
     const isHost = role === 'HOST';
 
+    // Strictly format short descriptors (Max 22 chars) to prevent Stripe validation errors
+    const shortLobbyId = String(lobbyId).replace(/[^a-zA-Z0-9]/g, '').substring(0, 8);
+
     // Create an isolated PaymentIntent strictly for manual hold capture
     const paymentIntent = await stripe.paymentIntents.create({
       amount: validAmountCents,
       currency: 'usd',
       capture_method: 'manual',
+      description: `BOGO Hold #${shortLobbyId}`,
+      statement_descriptor_suffix: `BOGO ${shortLobbyId}`,
       metadata: {
         lobbyId,
         role,
