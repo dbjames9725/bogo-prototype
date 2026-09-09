@@ -2,7 +2,7 @@ import { chromium } from 'playwright-extra';
 import stealthPlugin from 'puppeteer-extra-plugin-stealth';
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
-import * as WebSocket from 'ws';
+import WebSocket from 'ws';
 
 // Apply stealth plugin to playwright-extra
 chromium.use(stealthPlugin());
@@ -11,7 +11,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2023-10-16' as any,
 });
 
-// Pass ws transport and disable auth persistence for Node runtime compatibility
+// Pass ws transport explicitly using type assertion to satisfy Supabase interface
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -21,7 +21,7 @@ const supabase = createClient(
       autoRefreshToken: false,
     },
     realtime: {
-      transport: WebSocket,
+      transport: WebSocket as any,
     },
   }
 );
@@ -29,6 +29,7 @@ const supabase = createClient(
 interface CheckoutPayload {
   lobbyId: string;
 }
+
 
 export async function runAutomatedCheckout({ lobbyId }: CheckoutPayload) {
   // 1. Fetch Lobby & Address Data from Supabase
