@@ -2,6 +2,7 @@ import { chromium } from 'playwright-extra';
 import stealthPlugin from 'puppeteer-extra-plugin-stealth';
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
+import WebSocket from 'ws';
 
 // Apply stealth plugin to playwright-extra
 chromium.use(stealthPlugin());
@@ -10,9 +11,19 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2023-10-16' as any,
 });
 
+// Pass ws transport and disable auth persistence for Node runtime compatibility
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+    realtime: {
+      transport: WebSocket,
+    },
+  }
 );
 
 interface CheckoutPayload {
@@ -43,7 +54,7 @@ export async function runAutomatedCheckout({ lobbyId }: CheckoutPayload) {
   const expMonth = String(sensitiveCard.exp_month).padStart(2, '0');
   const expYear = String(sensitiveCard.exp_year).slice(-2);
 
-  console.log(`🥷 Launching Stealth Automated Checkout for Lobby: ${lobbyId}`);
+  console.log(` Launching Stealth Automated Checkout for Lobby: ${lobbyId}`);
 
   // 3. Launch Stealth Browser Context
   const browser = await chromium.launch({
@@ -95,13 +106,13 @@ export async function runAutomatedCheckout({ lobbyId }: CheckoutPayload) {
 
     // Inject Contact & Shipping Info
     await page.fill('input[name="email"]', 'fulfillment@bogosplit.com');
-    await page.fill('input[name="firstName"], input[autocomplete="given-name"]', hostAddress.name.split(' ')[0] || 'Host');
-    await page.fill('input[name="lastName"], input[autocomplete="family-name"]', hostAddress.name.split(' ')[1] || 'User');
-    await page.fill('input[name="address1"], input[autocomplete="address-line1"]', hostAddress.street1);
-    await page.fill('input[name="city"], input[autocomplete="address-level2"]', hostAddress.city);
-    await page.selectOption('select[name="zone"], select[autocomplete="address-level1"]', hostAddress.state);
-    await page.fill('input[name="postalCode"], input[autocomplete="postal-code"]', hostAddress.zip);
-    await page.fill('input[name="phone"], input[autocomplete="tel"]', hostAddress.phone);
+    await page.fill('input[name="firstName"], input[autocomplete="given-name"]', hostAddress?.name?.split(' ')[0] || 'Host');
+    await page.fill('input[name="lastName"], input[autocomplete="family-name"]', hostAddress?.name?.split(' ')[1] || 'User');
+    await page.fill('input[name="address1"], input[autocomplete="address-line1"]', hostAddress?.street1 || '');
+    await page.fill('input[name="city"], input[autocomplete="address-level2"]', hostAddress?.city || '');
+    await page.selectOption('select[name="zone"], select[autocomplete="address-level1"]', hostAddress?.state || '');
+    await page.fill('input[name="postalCode"], input[autocomplete="postal-code"]', hostAddress?.zip || '');
+    await page.fill('input[name="phone"], input[autocomplete="tel"]', hostAddress?.phone || '');
 
     await page.click('button:has-text("Continue to shipping"), button:has-text("Continue")');
     await page.waitForTimeout(2000);
@@ -128,7 +139,7 @@ export async function runAutomatedCheckout({ lobbyId }: CheckoutPayload) {
     const orderMatch = confirmationText.match(/(?:Order|Confirmation)\s*#?\s*([A-Z0-9-]+)/i);
     const orderNumber = orderMatch ? orderMatch[1] : 'CONFIRMED_' + Date.now();
 
-    console.log(`✅ Stealth Order Executed Cleanly! Confirmation #: ${orderNumber}`);
+    console.log(` Stealth Order Executed Cleanly! Confirmation #: ${orderNumber}`);
 
     // Update Supabase
     await supabase
@@ -140,7 +151,7 @@ export async function runAutomatedCheckout({ lobbyId }: CheckoutPayload) {
       .eq('id', lobbyId);
 
   } catch (err: any) {
-    console.error(`❌ Stealth Checkout Failed for Lobby ${lobbyId}:`, err.message);
+    console.error(` Stealth Checkout Failed for Lobby ${lobbyId}:`, err.message);
 
     await supabase
       .from('lobbies')
