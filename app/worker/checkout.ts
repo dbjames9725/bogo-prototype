@@ -2,7 +2,7 @@ import { chromium } from 'playwright-extra';
 import stealthPlugin from 'puppeteer-extra-plugin-stealth';
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
-import WebSocket from 'ws';
+import * as WebSocket from 'ws';
 
 // Apply stealth plugin to playwright-extra
 chromium.use(stealthPlugin());
