@@ -122,7 +122,7 @@ export async function POST(req: Request) {
       };
     } catch (issuingErr: any) {
       console.warn('Stripe Issuing not active. Using simulated card for testing:', issuingErr.message);
-     
+
       virtualCard = {
         id: `ic_mock_${shortLobbyId}`,
         last4: '4242',
@@ -146,7 +146,16 @@ export async function POST(req: Request) {
     }
 
     // 6. DISPATCH ASYNCHRONOUS CHECKOUT JOB TO RAILWAY PLAYWRIGHT WORKER
-    const railwayWorkerUrl = process.env.RAILWAY_WORKER_URL;
+    let railwayWorkerUrl = process.env.RAILWAY_WORKER_URL || 'https://bogo-prototype-production.up.railway.app';
+
+    // Ensure protocol is included to prevent "Failed to parse URL" errors
+    if (railwayWorkerUrl && !railwayWorkerUrl.startsWith('http://') && !railwayWorkerUrl.startsWith('https://')) {
+      railwayWorkerUrl = `https://${railwayWorkerUrl}`;
+    }
+
+    // Strip trailing slashes if present
+    railwayWorkerUrl = railwayWorkerUrl.replace(/\/+$/, '');
+
     const workerSecret = process.env.WORKER_SECRET || 'bogo_secret_token_123';
 
     if (railwayWorkerUrl) {
