@@ -1,20 +1,21 @@
-# Use official Playwright Node.js image with Linux Chromium binaries pre-installed
-FROM mcr.microsoft.com/playwright:v1.41.2-jammy
+FROM mcr.microsoft.com/playwright/node:18-jammy
 
-# Set working directory inside container
 WORKDIR /app
 
-# Copy dependency files first for layer caching
+# Copy dependency files
 COPY package*.json ./
 
-# Install dependencies inside Linux container
-RUN npm ci
+# Install dependencies
+RUN npm install
 
-# Copy the entire project context
+# Copy source files
 COPY . .
 
-# Expose Express server port
+# Expose server port
 EXPOSE 3001
 
-# Start worker using ts-node
-CMD ["npx", "ts-node", "--transpile-only", "worker/server.ts"]
+# Set port env
+ENV PORT=3001
+
+# Launch Playwright Express server
+CMD ["npx", "tsx", "app/worker/server.ts"]
