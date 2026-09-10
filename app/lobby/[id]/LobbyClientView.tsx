@@ -47,34 +47,28 @@ const CheckoutForm = memo(function CheckoutForm({
   lobbyId,
   role,
   basePrice,
-  selectedState,
-  onStateChange,
+  formData,
+  onFormChange,
   onSuccess,
   onSubmittingStateChange,
 }: {
   lobbyId: string;
   role: 'HOST' | 'PARTNER';
   basePrice: number;
-  selectedState: string;
-  onStateChange: (newState: string) => void;
+  formData: AddressData;
+  onFormChange: (field: keyof AddressData, value: string) => void;
   onSuccess: () => void;
   onSubmittingStateChange: (isSubmitting: boolean) => void;
 }) {
   const stripe = useStripe();
   const elements = useElements();
 
-  const [name, setName] = useState('');
-  const [street, setStreet] = useState('');
-  const [city, setCity] = useState('');
-  const [zip, setZip] = useState('');
-  const [phone, setPhone] = useState('');
-
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
   const splitShare = basePrice / 2;
   const platformFee = Math.round(splitShare * 0.025 * 100) / 100;
-  const taxRate = STATE_TAX_RATES[selectedState] ?? 0.0853;
+  const taxRate = STATE_TAX_RATES[formData.state] ?? 0.0853;
   const calculatedTax = Math.round(splitShare * taxRate * 100) / 100;
   const stripeFee = Math.round((splitShare * 0.029 + 0.30) * 100) / 100;
  
@@ -115,12 +109,12 @@ const CheckoutForm = memo(function CheckoutForm({
       if (paymentIntent && (paymentIntent.status === 'requires_capture' || paymentIntent.status === 'succeeded')) {
         const isHost = role === 'HOST';
         const addressData: AddressData = {
-          name,
-          street1: street,
-          city,
-          state: selectedState,
-          zip,
-          phone,
+          name: formData.name,
+          street1: formData.street1,
+          city: formData.city,
+          state: formData.state,
+          zip: formData.zip,
+          phone: formData.phone,
           taxRate,
         };
 
@@ -172,8 +166,8 @@ const CheckoutForm = memo(function CheckoutForm({
             type="text"
             placeholder="Jane Doe"
             required
-            value={name}
-            onChange={(e) => setName(e.target.value)}
+            value={formData.name}
+            onChange={(e) => onFormChange('name', e.target.value)}
             className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
@@ -183,8 +177,8 @@ const CheckoutForm = memo(function CheckoutForm({
             type="text"
             placeholder="123 Main St, Apt 4B"
             required
-            value={street}
-            onChange={(e) => setStreet(e.target.value)}
+            value={formData.street1}
+            onChange={(e) => onFormChange('street1', e.target.value)}
             className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
@@ -195,19 +189,19 @@ const CheckoutForm = memo(function CheckoutForm({
               type="text"
               placeholder="New York"
               required
-              value={city}
-              onChange={(e) => setCity(e.target.value)}
+              value={formData.city}
+              onChange={(e) => onFormChange('city', e.target.value)}
               className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white"
             />
           </div>
           <div>
             <label className="block text-[11px] font-semibold text-neutral-300 mb-1">State</label>
             <select
-              value={selectedState}
-              onChange={(e) => onStateChange(e.target.value)}
+              value={formData.state}
+              onChange={(e) => onFormChange('state', e.target.value)}
               className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
             >
-              {Object.keys(STATE_TAX_RATES).map((st) => (
+              {Object.keys(STATE_TAX_RATES).sort().map((st) => (
                 <option key={st} value={st}>
                   {st} ({(STATE_TAX_RATES[st] * 100).toFixed(2)}%)
                 </option>
@@ -220,8 +214,8 @@ const CheckoutForm = memo(function CheckoutForm({
               type="text"
               placeholder="10001"
               required
-              value={zip}
-              onChange={(e) => setZip(e.target.value)}
+              value={formData.zip}
+              onChange={(e) => onFormChange('zip', e.target.value)}
               className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white"
             />
           </div>
@@ -232,8 +226,8 @@ const CheckoutForm = memo(function CheckoutForm({
             type="tel"
             placeholder="(555) 000-0000"
             required
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            value={formData.phone}
+            onChange={(e) => onFormChange('phone', e.target.value)}
             className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white"
           />
         </div>
@@ -252,7 +246,7 @@ const CheckoutForm = memo(function CheckoutForm({
           <span className="font-mono text-neutral-300">+${platformFee.toFixed(2)}</span>
         </div>
         <div className="flex justify-between text-neutral-400">
-          <span>Estimated Sales Tax ({selectedState}):</span>
+          <span>Estimated Sales Tax ({formData.state}):</span>
           <span className="font-mono text-neutral-300">+${calculatedTax.toFixed(2)}</span>
         </div>
         <div className="flex justify-between text-neutral-400">
@@ -294,8 +288,8 @@ const StripeCheckoutWrapper = memo(function StripeCheckoutWrapper({
   role,
   basePrice,
   clientSecret,
-  selectedState,
-  onStateChange,
+  formData,
+  onFormChange,
   onSuccess,
   onSubmittingStateChange,
 }: {
@@ -303,8 +297,8 @@ const StripeCheckoutWrapper = memo(function StripeCheckoutWrapper({
   role: 'HOST' | 'PARTNER';
   basePrice: number;
   clientSecret: string;
-  selectedState: string;
-  onStateChange: (newState: string) => void;
+  formData: AddressData;
+  onFormChange: (field: keyof AddressData, value: string) => void;
   onSuccess: () => Promise<void>;
   onSubmittingStateChange: (isSubmitting: boolean) => void;
 }) {
@@ -314,8 +308,8 @@ const StripeCheckoutWrapper = memo(function StripeCheckoutWrapper({
         lobbyId={lobbyId}
         role={role}
         basePrice={basePrice}
-        selectedState={selectedState}
-        onStateChange={onStateChange}
+        formData={formData}
+        onFormChange={onFormChange}
         onSuccess={onSuccess}
         onSubmittingStateChange={onSubmittingStateChange}
       />
@@ -327,7 +321,17 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const [lobby, setLobby] = useState<LobbyData | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [role, setRole] = useState<'HOST' | 'PARTNER'>('PARTNER');
-  const [selectedState, setSelectedState] = useState<string>('NY');
+ 
+  // Lift shipping form inputs to parent component state so re-fetching PaymentIntent never clears them
+  const [formData, setFormData] = useState<AddressData>({
+    name: '',
+    street1: '',
+    city: '',
+    state: 'NY',
+    zip: '',
+    phone: '',
+  });
+
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
   const [timeLeft, setTimeLeft] = useState(899);
@@ -380,17 +384,20 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
       currentRole === 'HOST' ? !!data.host_payment_intent_id : !!data.partner_payment_intent_id;
 
     if (!hasUserPaid && data.status !== 'MATCHED') {
-      await createPaymentIntent(currentRole, selectedState);
+      await createPaymentIntent(currentRole, formData.state);
     }
     setLoading(false);
   };
 
-  const handleStateChange = async (newState: string) => {
-    setSelectedState(newState);
-    if (lobby && role) {
-      setClientSecret(null);
-      await createPaymentIntent(role, newState);
-    }
+  const handleFormFieldChange = async (field: keyof AddressData, value: string) => {
+    setFormData((prev) => {
+      const updated = { ...prev, [field]: value };
+      if (field === 'state' && value !== prev.state && lobby && role) {
+        setClientSecret(null);
+        createPaymentIntent(role, value);
+      }
+      return updated;
+    });
   };
 
   useEffect(() => {
@@ -452,7 +459,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     const platformFee = Math.round(splitBase * 0.025 * 100) / 100;
 
     const userAddress = role === 'HOST' ? lobby.user_a_address : lobby.user_b_address;
-    const userState = userAddress?.state || selectedState;
+    const userState = userAddress?.state || formData.state;
     const stateTaxRate = STATE_TAX_RATES[userState] ?? 0.0853;
     const calculatedTax = Math.round(splitBase * stateTaxRate * 100) / 100;
     const stripeFee = Math.round((splitBase * 0.029 + 0.30) * 100) / 100;
@@ -582,8 +589,8 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
             role={role}
             basePrice={lobby.item_price}
             clientSecret={clientSecret}
-            selectedState={selectedState}
-            onStateChange={handleStateChange}
+            formData={formData}
+            onFormChange={handleFormFieldChange}
             onSuccess={handlePaymentSuccess}
             onSubmittingStateChange={(submitting) => {
               isSubmittingRef.current = submitting;
