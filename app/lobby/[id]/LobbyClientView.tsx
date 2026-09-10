@@ -7,15 +7,16 @@ import { supabase } from '@/lib/supabase';
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 
-// State Tax Rate Map
+// UNIFIED COMBINED STATE + LOCAL TAX RATES
 const STATE_TAX_RATES: Record<string, number> = {
-  AL: 0.04, AK: 0.00, AZ: 0.056, AR: 0.065, CA: 0.0725, CO: 0.029, CT: 0.0635,
-  DE: 0.00, FL: 0.06, GA: 0.04, HI: 0.04, ID: 0.06, IL: 0.0625, IN: 0.07,
-  IA: 0.06, KS: 0.065, KY: 0.06, LA: 0.0445, ME: 0.055, MD: 0.06, MA: 0.0625,
-  MI: 0.06, MN: 0.06875, MS: 0.07, MO: 0.04225, MT: 0.00, NE: 0.055, NV: 0.0685,
-  NH: 0.00, NJ: 0.06625, NM: 0.05125, NY: 0.08875, NC: 0.0475, ND: 0.05, OH: 0.0575,
-  OK: 0.045, OR: 0.00, PA: 0.06, RI: 0.07, SC: 0.06, SD: 0.045, TN: 0.07,
-  TX: 0.0625, UT: 0.061, VT: 0.06, VA: 0.053, WA: 0.065, WV: 0.06, WI: 0.05, WY: 0.04,
+  AK: 0.0181, AL: 0.0924, AR: 0.0944, AZ: 0.0837, CA: 0.0885, CO: 0.0778, CT: 0.0635,
+  DC: 0.0600, DE: 0.0000, FL: 0.0700, GA: 0.0738, HI: 0.0444, IA: 0.0694, ID: 0.0603,
+  IL: 0.0884, IN: 0.0700, KS: 0.0865, KY: 0.0600, LA: 0.0956, MA: 0.0625, MD: 0.0600,
+  ME: 0.0550, MI: 0.0600, MN: 0.0803, MO: 0.0833, MS: 0.0707, MT: 0.0000, NC: 0.0698,
+  ND: 0.0696, NE: 0.0697, NH: 0.0000, NJ: 0.0660, NM: 0.0772, NV: 0.0823, NY: 0.0853,
+  OH: 0.0724, OK: 0.0899, OR: 0.0000, PA: 0.0634, RI: 0.0700, SC: 0.0744, SD: 0.0611,
+  TN: 0.0955, TX: 0.0820, UT: 0.0722, VA: 0.0577, VT: 0.0636, WA: 0.0938, WI: 0.0543,
+  WV: 0.0657, WY: 0.0536,
 };
 
 export interface AddressData {
@@ -43,9 +44,6 @@ export interface LobbyData {
   user_b_address?: AddressData;
 }
 
-// -------------------------------------------------------------
-// ISOLATED CHECKOUT FORM
-// -------------------------------------------------------------
 const CheckoutForm = memo(function CheckoutForm({
   lobbyId,
   role,
@@ -73,12 +71,12 @@ const CheckoutForm = memo(function CheckoutForm({
   const [errorMessage, setErrorMessage] = useState('');
   const [rawErrorDetails, setRawErrorDetails] = useState<string>('');
 
-  // Explicit Fee & Tax Breakdown Calculations
+  // UNIFIED FEE CALCULATIONS (2.5% Platform Fee)
   const splitShare = basePrice / 2; // e.g. $60.00
-  const platformFee = 2.50; // Fixed Platform Service Fee
-  const stripeFee = 2.54; // Stripe Processing Fee
-  const taxRate = STATE_TAX_RATES[selectedState] ?? 0.08875;
+  const platformFee = Math.round(splitShare * 0.025 * 100) / 100; // 2.5% = $1.50
+  const taxRate = STATE_TAX_RATES[selectedState] ?? 0.0853;
   const calculatedTax = Math.round(splitShare * taxRate * 100) / 100;
+  const stripeFee = Math.round((splitShare * 0.029 + 0.30) * 100) / 100; // $2.04
  
   const totalAmountCharged = splitShare + calculatedTax + platformFee + stripeFee;
 
@@ -111,18 +109,7 @@ const CheckoutForm = memo(function CheckoutForm({
       });
 
       if (result.error) {
-        console.error('FULL STRIPE CONFIRMATION ERROR OBJECT:', result.error);
-
-        const detailedMessage = result.error.message || 'Unknown Stripe Error';
-        const code = result.error.code ? `[Code: ${result.error.code}]` : '';
-        const declineCode = result.error.decline_code
-          ? `[Decline Code: ${result.error.decline_code}]`
-          : '';
-        const param = result.error.param ? `[Param: ${result.error.param}]` : '';
-        const type = result.error.type ? `[Type: ${result.error.type}]` : '';
-
-        setErrorMessage(detailedMessage);
-        setRawErrorDetails(`${type} ${code} ${declineCode} ${param}`.trim());
+        setErrorMessage(result.error.message || 'Unknown Stripe Error');
         return;
       }
 
@@ -172,11 +159,8 @@ const CheckoutForm = memo(function CheckoutForm({
         }
 
         await onSuccess();
-      } else {
-        setErrorMessage(`Payment intent in unexpected state: ${paymentIntent?.status}`);
       }
     } catch (err: any) {
-      console.error('Checkout Submission Catch Error:', err);
       setErrorMessage(err.message || 'An unexpected client-side error occurred');
     } finally {
       setLoading(false);
@@ -263,7 +247,7 @@ const CheckoutForm = memo(function CheckoutForm({
         </div>
       </div>
 
-      {/* Transparent Dynamic Fee & Tax Summary */}
+      {/* Synchronized Fee Breakdown */}
       <div className="bg-neutral-900/80 p-3.5 rounded-xl border border-neutral-800/80 text-xs space-y-2">
         <div className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 border-b border-neutral-800 pb-1.5">
           Hold Breakdown
@@ -273,16 +257,16 @@ const CheckoutForm = memo(function CheckoutForm({
           <span className="font-mono text-white">${splitShare.toFixed(2)}</span>
         </div>
         <div className="flex justify-between text-neutral-400">
+          <span>Platform Fee (2.5% Retail Split):</span>
+          <span className="font-mono text-neutral-300">+${platformFee.toFixed(2)}</span>
+        </div>
+        <div className="flex justify-between text-neutral-400">
           <span>Estimated Sales Tax ({selectedState}):</span>
-          <span className="font-mono text-neutral-300">${calculatedTax.toFixed(2)}</span>
+          <span className="font-mono text-neutral-300">+${calculatedTax.toFixed(2)}</span>
         </div>
         <div className="flex justify-between text-neutral-400">
-          <span>BOGO Platform Service Fee:</span>
-          <span className="font-mono text-neutral-300">${platformFee.toFixed(2)}</span>
-        </div>
-        <div className="flex justify-between text-neutral-400">
-          <span>Stripe Payment Processing Fee:</span>
-          <span className="font-mono text-neutral-300">${stripeFee.toFixed(2)}</span>
+          <span>Stripe Processing Fee:</span>
+          <span className="font-mono text-neutral-300">+${stripeFee.toFixed(2)}</span>
         </div>
         <div className="flex justify-between text-emerald-400 font-bold border-t border-neutral-800 pt-2 text-sm">
           <span>Total Authorized Hold:</span>
@@ -298,13 +282,8 @@ const CheckoutForm = memo(function CheckoutForm({
       </div>
 
       {errorMessage && (
-        <div className="p-4 bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs rounded-xl font-semibold space-y-1">
-          <div className="font-bold text-sm">{errorMessage}</div>
-          {rawErrorDetails && (
-            <div className="text-[11px] text-rose-300/80 font-mono bg-black/40 p-2 rounded border border-rose-500/20 break-all">
-              Diagnostics: {rawErrorDetails}
-            </div>
-          )}
+        <div className="p-4 bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs rounded-xl font-semibold">
+          {errorMessage}
         </div>
       )}
 
@@ -313,17 +292,12 @@ const CheckoutForm = memo(function CheckoutForm({
         disabled={!stripe || loading}
         className="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-extrabold rounded-xl shadow-lg transition duration-200 text-base cursor-pointer transform active:scale-95 disabled:opacity-50"
       >
-        {loading
-          ? 'Securing Hold...'
-          : `Authorize $${totalAmountCharged.toFixed(2)} Hold`}
+        {loading ? 'Securing Hold...' : `Authorize $${totalAmountCharged.toFixed(2)} Hold`}
       </button>
     </form>
   );
 });
 
-// -------------------------------------------------------------
-// STABLE STRIPE ELEMENTS WRAPPER
-// -------------------------------------------------------------
 const StripeCheckoutWrapper = memo(function StripeCheckoutWrapper({
   lobbyId,
   role,
@@ -354,9 +328,6 @@ const StripeCheckoutWrapper = memo(function StripeCheckoutWrapper({
   );
 });
 
-// -------------------------------------------------------------
-// MAIN LOBBY CLIENT VIEW COMPONENT
-// -------------------------------------------------------------
 export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const [lobby, setLobby] = useState<LobbyData | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
@@ -416,7 +387,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     setLoading(false);
   };
 
-  // SUBSCRIBE TO SUPABASE REALTIME UPDATES
   useEffect(() => {
     fetchLobbyState();
 
@@ -431,7 +401,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           filter: `id=eq.${lobbyId}`,
         },
         (payload) => {
-          console.log('Realtime lobby update received:', payload.new);
           setLobby(payload.new as LobbyData);
         }
       )
@@ -472,27 +441,24 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     );
   }
 
-  // -------------------------------------------------------------
-  // MATCHED CONFIRMATION VIEW (Full Transparent Receipt with Fees)
-  // -------------------------------------------------------------
+  // MATCHED CONFIRMATION RECEIPT (UNIFIED 2.5% PLATFORM FEE)
   if (lobby.status === 'MATCHED') {
-    const originalPrice = Number(lobby.item_price) || 0; // $120.00
-    const splitBase = originalPrice / 2; // $60.00
-    const platformFee = 2.50;
-    const stripeFee = 2.54;
+    const originalPrice = Number(lobby.item_price) || 0;
+    const splitBase = originalPrice / 2;
+    const platformFee = Math.round(splitBase * 0.025 * 100) / 100; // $1.50
 
     const userAddress = role === 'HOST' ? lobby.user_a_address : lobby.user_b_address;
     const userState = userAddress?.state || 'NY';
-    const stateTaxRate = STATE_TAX_RATES[userState] ?? 0.08875;
+    const stateTaxRate = STATE_TAX_RATES[userState] ?? 0.0853;
     const calculatedTax = Math.round(splitBase * stateTaxRate * 100) / 100;
-   
-    const totalPaidWithTax = splitBase + calculatedTax + platformFee + stripeFee; // Exact $65.04
+    const stripeFee = Math.round((splitBase * 0.029 + 0.30) * 100) / 100; // $2.04
+
+    const totalPaidWithTax = splitBase + calculatedTax + platformFee + stripeFee;
     const totalSaved = originalPrice - splitBase;
 
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-neutral-950 border border-emerald-500/30 shadow-2xl rounded-3xl p-6 sm:p-8 text-center space-y-6">
-          {/* Success Badge */}
           <div className="space-y-3">
             <div className="w-16 h-16 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-full flex items-center justify-center mx-auto text-3xl font-extrabold shadow-lg shadow-emerald-500/10">
               ✓
@@ -508,7 +474,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
             </div>
           </div>
 
-          {/* Item Banner */}
           <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 text-left flex justify-between items-center">
             <div>
               <div className="text-[10px] uppercase font-extrabold text-neutral-400 tracking-wider">Item Purchased</div>
@@ -520,7 +485,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
             </div>
           </div>
 
-          {/* Fully Transparent Payment Receipt Breakdown */}
           <div className="bg-neutral-900/60 border border-neutral-800/80 rounded-2xl p-4 text-left space-y-2.5 text-xs">
             <div className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 border-b border-neutral-800 pb-2">
               Payment Receipt Breakdown
@@ -537,18 +501,18 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
             </div>
 
             <div className="flex justify-between text-neutral-300">
-              <span className="text-neutral-400">Sales Tax ({userState}):</span>
-              <span className="font-mono text-neutral-300">${calculatedTax.toFixed(2)}</span>
+              <span className="text-neutral-400">Platform Fee (2.5% Retail Split):</span>
+              <span className="font-mono text-neutral-300">+${platformFee.toFixed(2)}</span>
             </div>
 
             <div className="flex justify-between text-neutral-300">
-              <span className="text-neutral-400">BOGO Platform Service Fee:</span>
-              <span className="font-mono text-neutral-300">${platformFee.toFixed(2)}</span>
+              <span className="text-neutral-400">Sales Tax ({userState}):</span>
+              <span className="font-mono text-neutral-300">+${calculatedTax.toFixed(2)}</span>
             </div>
 
             <div className="flex justify-between text-neutral-300">
               <span className="text-neutral-400">Stripe Processing Fee:</span>
-              <span className="font-mono text-neutral-300">${stripeFee.toFixed(2)}</span>
+              <span className="font-mono text-neutral-300">+${stripeFee.toFixed(2)}</span>
             </div>
 
             <div className="flex justify-between text-white border-t border-neutral-800 pt-2.5 font-bold text-sm">
@@ -557,7 +521,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
             </div>
           </div>
 
-          {/* Fulfillment Status Banner */}
           <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-3 text-left space-y-1.5">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold text-neutral-300">Virtual Issuing Card</span>
@@ -578,13 +541,9 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const hasUserPaid =
     role === 'HOST' ? !!lobby.host_payment_intent_id : !!lobby.partner_payment_intent_id;
 
-  // -------------------------------------------------------------
-  // PRE-MATCH / PAYMENT AUTHORIZATION VIEW
-  // -------------------------------------------------------------
   return (
     <div className="min-h-screen bg-black text-white p-4 flex flex-col items-center justify-center">
       <div className="max-w-xl w-full bg-neutral-950 border border-neutral-800 shadow-2xl rounded-3xl p-6 sm:p-8 space-y-6">
-        {/* Header */}
         <div className="flex justify-between items-center border-b border-neutral-800 pb-4">
           <div>
             <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
@@ -598,7 +557,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           </div>
         </div>
 
-        {/* Share Link Banner for Host */}
         {role === 'HOST' && !lobby.partner_payment_intent_id && (
           <div className="bg-neutral-900 border border-neutral-800 p-4 rounded-2xl flex items-center justify-between gap-3">
             <div className="text-xs text-neutral-300">
@@ -614,7 +572,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           </div>
         )}
 
-        {/* Payment Form or Awaiting State */}
         {!hasUserPaid && clientSecret ? (
           <StripeCheckoutWrapper
             lobbyId={lobbyId}
@@ -645,4 +602,3 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     </div>
   );
 }
-
