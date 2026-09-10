@@ -4,10 +4,15 @@ import { runAutomatedCheckout } from './checkout';
 const app = express();
 app.use(express.json());
 
+// Railway injects PORT automatically; default to 3001
 const PORT = process.env.PORT || 3001;
 const WORKER_SECRET = process.env.WORKER_SECRET || 'bogo_secret_token_123';
 
-// Health Check Endpoint
+// Root & Health Check Endpoints
+app.get('/', (req: Request, res: Response) => {
+  res.json({ status: 'ok', message: 'BOGO Playwright Worker is live' });
+});
+
 app.get('/health', (req: Request, res: Response) => {
   res.json({ status: 'ok', worker: 'BOGO Split Playwright Agent' });
 });
@@ -41,8 +46,9 @@ app.post('/api/run-checkout', async (req: Request, res: Response) => {
   });
 });
 
-// Bind explicitly to 0.0.0.0 so Railway edge proxy routes external traffic to container
+// Bind to 0.0.0.0 explicitly (REQUIRED for Railway containers)
 app.listen(Number(PORT), '0.0.0.0', () => {
-  console.log(`Playwright Worker Service listening on port ${PORT}`);
+  console.log(`Playwright Worker Service listening on 0.0.0.0:${PORT}`);
 });
+
 
