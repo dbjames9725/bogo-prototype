@@ -25,6 +25,8 @@ export interface LobbyData {
   status: string;
   host_payment_intent_id?: string;
   partner_payment_intent_id?: string;
+  issuing_card_id?: string;
+  virtual_card_last4?: string;
   user_a_address?: AddressData;
   user_b_address?: AddressData;
 }
@@ -71,7 +73,10 @@ const CheckoutForm = memo(function CheckoutForm({
     setRawErrorDetails('');
 
     try {
-      const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://bogo-prototype-wheat.vercel.app';
+      const currentOrigin =
+        typeof window !== 'undefined'
+          ? window.location.origin
+          : 'https://bogo-prototype-wheat.vercel.app';
       const redirectUrl = `${currentOrigin}/lobby/${lobbyId}`;
 
       const result = await stripe.confirmPayment({
@@ -87,7 +92,9 @@ const CheckoutForm = memo(function CheckoutForm({
 
         const detailedMessage = result.error.message || 'Unknown Stripe Error';
         const code = result.error.code ? `[Code: ${result.error.code}]` : '';
-        const declineCode = result.error.decline_code ? `[Decline Code: ${result.error.decline_code}]` : '';
+        const declineCode = result.error.decline_code
+          ? `[Decline Code: ${result.error.decline_code}]`
+          : '';
         const param = result.error.param ? `[Param: ${result.error.param}]` : '';
         const type = result.error.type ? `[Type: ${result.error.type}]` : '';
 
@@ -98,7 +105,10 @@ const CheckoutForm = memo(function CheckoutForm({
 
       const paymentIntent = result.paymentIntent;
 
-      if (paymentIntent && (paymentIntent.status === 'requires_capture' || paymentIntent.status === 'succeeded')) {
+      if (
+        paymentIntent &&
+        (paymentIntent.status === 'requires_capture' || paymentIntent.status === 'succeeded')
+      ) {
         const isHost = role === 'HOST';
         const addressData: AddressData = { name, street1: street, city, state, zip, phone };
 
@@ -130,7 +140,6 @@ const CheckoutForm = memo(function CheckoutForm({
           }
         }
 
-        // Trigger successful state update in parent
         await onSuccess();
       } else {
         setErrorMessage(`Payment intent in unexpected state: ${paymentIntent?.status}`);
@@ -145,10 +154,10 @@ const CheckoutForm = memo(function CheckoutForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-4 text-left">
       <div className="bg-neutral-900 p-4 rounded-2xl border border-neutral-800 space-y-3">
         <h4 className="text-xs font-bold uppercase text-neutral-400 tracking-wider">
-          📦 Shipping & Billing Information
+          Shipping & Billing Information
         </h4>
         <div>
           <label className="block text-[11px] font-semibold text-neutral-300 mb-1">Full Name</label>
@@ -222,14 +231,14 @@ const CheckoutForm = memo(function CheckoutForm({
 
       <div className="bg-neutral-900 p-4 rounded-2xl border border-neutral-800">
         <h4 className="text-xs font-bold uppercase text-neutral-400 tracking-wider mb-3">
-          💳 Payment Pre-Authorization
+          Payment Pre-Authorization
         </h4>
         <PaymentElement />
       </div>
 
       {errorMessage && (
         <div className="p-4 bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs rounded-xl font-semibold space-y-1">
-          <div className="font-bold text-sm">⚠️ {errorMessage}</div>
+          <div className="font-bold text-sm">{errorMessage}</div>
           {rawErrorDetails && (
             <div className="text-[11px] text-rose-300/80 font-mono bg-black/40 p-2 rounded border border-rose-500/20 break-all">
               Diagnostics: {rawErrorDetails}
@@ -243,7 +252,9 @@ const CheckoutForm = memo(function CheckoutForm({
         disabled={!stripe || loading}
         className="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-extrabold rounded-xl shadow-lg transition duration-200 text-base cursor-pointer transform active:scale-95 disabled:opacity-50"
       >
-        {loading ? '⚡ Securing Hold...' : `🚀 Authorize & Claim ${role === 'HOST' ? 'Host' : 'Partner'} Share`}
+        {loading
+          ? 'Securing Hold...'
+          : `Authorize & Claim ${role === 'HOST' ? 'Host' : 'Partner'} Share`}
       </button>
     </form>
   );
@@ -279,6 +290,9 @@ const StripeCheckoutWrapper = memo(function StripeCheckoutWrapper({
   );
 });
 
+// -------------------------------------------------------------
+// MAIN LOBBY CLIENT VIEW COMPONENT
+// -------------------------------------------------------------
 export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const [lobby, setLobby] = useState<LobbyData | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
@@ -312,12 +326,14 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
 
     setLobby(data);
 
-    const isHostStored = typeof window !== 'undefined' && localStorage.getItem(`hosted_${lobbyId}`) === 'true';
+    const isHostStored =
+      typeof window !== 'undefined' && localStorage.getItem(`hosted_${lobbyId}`) === 'true';
     const isHost = isHostStored || !data.host_payment_intent_id;
     const currentRole = isHost ? 'HOST' : 'PARTNER';
     setRole(currentRole);
 
-    const hasUserPaid = currentRole === 'HOST' ? !!data.host_payment_intent_id : !!data.partner_payment_intent_id;
+    const hasUserPaid =
+      currentRole === 'HOST' ? !!data.host_payment_intent_id : !!data.partner_payment_intent_id;
 
     if (!hasUserPaid && data.status !== 'MATCHED' && !intentCreatedRef.current) {
       intentCreatedRef.current = true;
@@ -336,24 +352,23 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     setLoading(false);
   };
 
-  const handlePaymentSuccess = async () => {
-    intentCreatedRef.current = false;
-    setClientSecret(null);
-    await fetchLobbyState();
-  };
-
+  // SUBSCRIBE TO SUPABASE REALTIME UPDATES
   useEffect(() => {
     fetchLobbyState();
 
     const channel = supabase
-      .channel(`lobby_${lobbyId}`)
+      .channel(`realtime-lobby-${lobbyId}`)
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'lobbies', filter: `id=eq.${lobbyId}` },
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'lobbies',
+          filter: `id=eq.${lobbyId}`,
+        },
         (payload) => {
-          if (!isSubmittingRef.current) {
-            setLobby(payload.new as LobbyData);
-          }
+          console.log('Realtime lobby update received:', payload.new);
+          setLobby(payload.new as LobbyData);
         }
       )
       .subscribe();
@@ -363,169 +378,147 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     };
   }, [lobbyId]);
 
-  const copyInviteLink = () => {
+  const handlePaymentSuccess = async () => {
+    intentCreatedRef.current = false;
+    setClientSecret(null);
+    await fetchLobbyState();
+  };
+
+  const handleCopyLink = () => {
     if (typeof window !== 'undefined') {
       navigator.clipboard.writeText(window.location.href);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
+      setTimeout(() => setCopied(false), 2000);
     }
   };
 
-  if (loading || !lobby) {
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-neutral-950 text-neutral-400 font-sans">
-        <div className="flex items-center gap-3 bg-neutral-900 p-6 rounded-2xl border border-neutral-800">
-          <div className="w-5 h-5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
-          <span className="font-bold text-sm">Initializing Gamified Lobby...</span>
+      <div className="flex items-center justify-center min-h-screen bg-black text-white">
+        <p className="text-neutral-400 text-sm font-medium animate-pulse">Loading BOGO Lobby...</p>
+      </div>
+    );
+  }
+
+  if (fetchError || !lobby) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-black text-white">
+        <p className="text-rose-400 font-semibold">{fetchError || 'Lobby not found.'}</p>
+      </div>
+    );
+  }
+
+  // -------------------------------------------------------------
+  // MATCHED CONFIRMATION VIEW (Renders automatically when status shifts to MATCHED)
+  // -------------------------------------------------------------
+  if (lobby.status === 'MATCHED') {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center p-4">
+        <div className="max-w-xl w-full bg-neutral-900 border border-emerald-500/30 shadow-2xl rounded-3xl p-8 text-center space-y-6">
+          <div className="w-16 h-16 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-full flex items-center justify-center mx-auto text-3xl font-extrabold">
+            ✓
+          </div>
+
+          <div>
+            <h2 className="text-2xl font-extrabold text-white">BOGO Match Confirmed!</h2>
+            <p className="text-xs text-neutral-400 mt-1">
+              Dual payment holds captured successfully. Your virtual payment card is active.
+            </p>
+          </div>
+
+          <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-5 text-left space-y-3 text-xs">
+            <div className="flex justify-between text-neutral-300">
+              <span className="font-semibold text-neutral-400">Item:</span>
+              <span className="font-bold text-white">{lobby.item_name}</span>
+            </div>
+            <div className="flex justify-between text-neutral-300">
+              <span className="font-semibold text-neutral-400">Deal Type:</span>
+              <span className="font-bold text-emerald-400">{lobby.deal_type}</span>
+            </div>
+            <div className="flex justify-between text-neutral-300">
+              <span className="font-semibold text-neutral-400">Individual Share:</span>
+              <span className="font-bold text-white">${Number(lobby.item_price).toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-neutral-300 border-t border-neutral-800 pt-3">
+              <span className="font-semibold text-white">Virtual Card Issued:</span>
+              <span className="font-mono bg-neutral-800 text-emerald-300 px-2 py-0.5 rounded border border-emerald-500/20">
+                •••• {lobby.virtual_card_last4 || '4242'}
+              </span>
+            </div>
+          </div>
+
+          <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs px-4 py-3 rounded-xl flex items-center justify-center gap-2 font-medium">
+            <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span>
+            Order queued for fulfillment with virtual card #{lobby.issuing_card_id || 'ic_active'}
+          </div>
         </div>
       </div>
     );
   }
 
-  const itemPrice = lobby.item_price || 0;
-  const isBogo50 = lobby.deal_type === 'BOGO_50';
-  const bogoPromoTotal = isBogo50 ? itemPrice * 1.5 : itemPrice;
-  const baseShare = bogoPromoTotal / 2;
-  const platformFee = (itemPrice * 0.05) / 2;
-  const personalSavings = itemPrice - baseShare;
+  const hasUserPaid =
+    role === 'HOST' ? !!lobby.host_payment_intent_id : !!lobby.partner_payment_intent_id;
 
-  const isHost = role === 'HOST';
-  const hasHostPaid = !!lobby.host_payment_intent_id;
-  const hasPartnerPaid = !!lobby.partner_payment_intent_id;
-  const isMatched = lobby.status === 'MATCHED' && hasHostPaid && hasPartnerPaid;
-
-  const progressPercent = isMatched ? 100 : hasHostPaid || hasPartnerPaid ? 50 : 10;
-
+  // -------------------------------------------------------------
+  // PRE-MATCH / PAYMENT AUTHORIZATION VIEW
+  // -------------------------------------------------------------
   return (
-    <div className="min-h-screen bg-neutral-950 text-white py-8 px-4 font-sans">
-      <div className="max-w-xl mx-auto space-y-6">
-
-        {/* Gamified Banner */}
-        <div className="bg-gradient-to-r from-blue-900/40 via-purple-900/40 to-neutral-900 p-5 rounded-3xl border border-neutral-800 space-y-3">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-2">
-              <span className="text-2xl">🏆</span>
-              <div>
-                <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
-                  +250 BOGO XP AVAILABLE
-                </span>
-                <h2 className="text-lg font-black text-white mt-1">{lobby.item_name}</h2>
-              </div>
-            </div>
-            <div className="text-right">
-              <span className="text-xs text-amber-400 font-extrabold flex items-center gap-1 justify-end">
-                <span>⏱️ Hold Expires:</span>
-              </span>
-              <span className="text-base font-black text-white">{formatTimer(timeLeft)}</span>
-            </div>
+    <div className="min-h-screen bg-black text-white p-4 flex flex-col items-center justify-center">
+      <div className="max-w-xl w-full bg-neutral-950 border border-neutral-800 shadow-2xl rounded-3xl p-6 sm:p-8 space-y-6">
+        {/* Header */}
+        <div className="flex justify-between items-center border-b border-neutral-800 pb-4">
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
+              {role === 'HOST' ? 'Lobby Host' : 'Lobby Partner'}
+            </span>
+            <h1 className="text-xl font-black text-white mt-2">{lobby.item_name}</h1>
           </div>
-
-          <div className="space-y-1.5 pt-2 border-t border-neutral-800">
-            <div className="flex justify-between text-xs font-bold text-neutral-300">
-              <span>Deal Match Unlock Progress</span>
-              <span className="text-emerald-400">{progressPercent}% Unlocked</span>
-            </div>
-            <div className="w-full h-3 bg-neutral-950 rounded-full overflow-hidden border border-neutral-800">
-              <div
-                className="h-full bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-400 transition-all duration-700 rounded-full"
-                style={{ width: `${progressPercent}%` }}
-              />
-            </div>
+          <div className="text-right">
+            <div className="text-[10px] uppercase font-bold text-neutral-400">Time Remaining</div>
+            <div className="text-base font-mono font-bold text-amber-400">{formatTimer(timeLeft)}</div>
           </div>
         </div>
 
-        {fetchError && (
-          <div className="p-4 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs rounded-xl font-bold">
-            ⚠️ {fetchError}
-          </div>
-        )}
-
-        {/* Match Celebration */}
-        {isMatched ? (
-          <div className="bg-gradient-to-br from-emerald-600 to-teal-700 text-white p-8 rounded-3xl shadow-2xl space-y-3 text-center border border-emerald-400/30">
-            <div className="text-5xl animate-bounce">🎉</div>
-            <h3 className="text-2xl font-black tracking-tight">DEAL MATCH UNLOCKED!</h3>
-            <p className="text-xs text-emerald-100 font-medium">
-              You both saved <span className="font-bold text-white">${personalSavings.toFixed(2)}</span>! Pre-authorizations have been captured and order processing has begun.
-            </p>
-            <div className="inline-block bg-white/10 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/20 text-xs font-bold text-emerald-200 mt-2">
-              🏅 Badge Unlocked: Master Deal Matcher
+        {/* Share Link Banner for Host */}
+        {role === 'HOST' && !lobby.partner_payment_intent_id && (
+          <div className="bg-neutral-900 border border-neutral-800 p-4 rounded-2xl flex items-center justify-between gap-3">
+            <div className="text-xs text-neutral-300">
+              <span className="font-bold text-white block mb-0.5">Invite a Partner</span>
+              Share this link to split the purchase 50/50.
             </div>
-          </div>
-        ) : (
-          <div className="bg-neutral-900 p-6 rounded-3xl border border-neutral-800 space-y-4">
-            <h3 className="text-base font-extrabold border-b border-neutral-800 pb-3 flex justify-between items-center text-white">
-              <span>Price Breakdown</span>
-              <span className="text-xs font-extrabold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full">
-                Saves ${personalSavings.toFixed(2)} Each
-              </span>
-            </h3>
-
-            <div className="space-y-2.5 text-sm">
-              <div className="flex justify-between text-neutral-400">
-                <span>BOGO Promo Total (Pre-tax)</span>
-                <span className="font-semibold text-white">${bogoPromoTotal.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-neutral-400">
-                <span>Your Split Share (Pre-tax)</span>
-                <span className="font-bold text-emerald-400">${baseShare.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-neutral-400">
-                <span>Platform Fee (5% Retail Split)</span>
-                <span className="font-semibold text-neutral-300">+${platformFee.toFixed(2)}</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {isHost && hasHostPaid && !isMatched && (
-          <div className="bg-blue-500/10 border border-blue-500/20 p-6 rounded-3xl space-y-3">
-            <div className="flex items-center gap-2 text-blue-400 font-bold text-sm">
-              <span>🤝 Challenge a Friend to Split & Earn +250 XP</span>
-            </div>
-            <p className="text-xs text-blue-300">
-              Your share is locked in! Send this invite link to a partner before the 15-minute timer expires.
-            </p>
             <button
-              onClick={copyInviteLink}
-              className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-extrabold rounded-xl text-sm transition shadow-md cursor-pointer"
+              onClick={handleCopyLink}
+              className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white font-bold text-xs rounded-xl transition cursor-pointer shrink-0"
             >
-              {copied ? '✓ Invite Link Copied to Clipboard!' : '🔗 Copy Share Invite Link'}
+              {copied ? 'Copied!' : 'Copy Link'}
             </button>
           </div>
         )}
 
-        {!isMatched && (
-          <div className="bg-neutral-900 p-6 rounded-3xl border border-neutral-800 space-y-4">
-            {(isHost && !hasHostPaid) || (!isHost && !hasPartnerPaid) ? (
-              <>
-                <h3 className="text-lg font-extrabold text-white border-b border-neutral-800 pb-3">
-                  {isHost ? 'Authorize Host Pre-Hold' : 'Accept Challenge & Claim Partner Split'}
-                </h3>
-                {clientSecret ? (
-                  <StripeCheckoutWrapper
-                    lobbyId={lobbyId}
-                    role={role}
-                    clientSecret={clientSecret}
-                    onSuccess={handlePaymentSuccess}
-                    onSubmittingStateChange={(submitting) => {
-                      isSubmittingRef.current = submitting;
-                    }}
-                  />
-                ) : (
-                  <div className="py-6 text-center text-xs font-semibold text-neutral-500">
-                    Preparing Stripe Checkout...
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="p-4 bg-amber-500/10 border border-amber-500/20 text-amber-300 rounded-2xl text-xs font-semibold text-center space-y-1">
-                <div>⏳ Waiting for {isHost ? 'Partner' : 'Host'} to authorize their split...</div>
-                <div className="text-[11px] font-normal text-amber-400">
-                  Neither card is charged until both players lock in their hold.
-                </div>
-              </div>
-            )}
+        {/* Payment Form or Awaiting State */}
+        {!hasUserPaid && clientSecret ? (
+          <StripeCheckoutWrapper
+            lobbyId={lobbyId}
+            role={role}
+            clientSecret={clientSecret}
+            onSuccess={handlePaymentSuccess}
+            onSubmittingStateChange={(submitting) => {
+              isSubmittingRef.current = submitting;
+            }}
+          />
+        ) : hasUserPaid ? (
+          <div className="p-6 bg-neutral-900 border border-neutral-800 rounded-2xl text-center space-y-3">
+            <div className="w-10 h-10 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-full flex items-center justify-center mx-auto text-xl font-bold">
+              ✓
+            </div>
+            <h3 className="text-base font-bold text-white">Payment Hold Authorized!</h3>
+            <p className="text-xs text-neutral-400">
+              Awaiting partner authorization to capture funds and issue virtual card...
+            </p>
+          </div>
+        ) : (
+          <div className="p-6 bg-neutral-900 border border-neutral-800 rounded-2xl text-center">
+            <p className="text-xs text-neutral-400 animate-pulse">Initializing Stripe Checkout...</p>
           </div>
         )}
       </div>
