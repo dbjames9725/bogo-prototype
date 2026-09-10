@@ -7,12 +7,11 @@ import { supabase } from '@/lib/supabase';
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 
-// UNIFIED COMBINED STATE + LOCAL TAX RATES
 const STATE_TAX_RATES: Record<string, number> = {
   AK: 0.0181, AL: 0.0924, AR: 0.0944, AZ: 0.0837, CA: 0.0885, CO: 0.0778, CT: 0.0635,
   DC: 0.0600, DE: 0.0000, FL: 0.0700, GA: 0.0738, HI: 0.0444, IA: 0.0694, ID: 0.0603,
   IL: 0.0884, IN: 0.0700, KS: 0.0865, KY: 0.0600, LA: 0.0956, MA: 0.0625, MD: 0.0600,
-  ME: 0.0550, MI: 0.0600, MN: 0.0803, MO: 0.0833, MS: 0.0707, MT: 0.0000, NC: 0.0698,
+  ME: 0.0550, MI: 0.0600, MN: 0.0803, MS: 0.0707, MO: 0.0833, MT: 0.0000, NC: 0.0698,
   ND: 0.0696, NE: 0.0697, NH: 0.0000, NJ: 0.0660, NM: 0.0772, NV: 0.0823, NY: 0.0853,
   OH: 0.0724, OK: 0.0899, OR: 0.0000, PA: 0.0634, RI: 0.0700, SC: 0.0744, SD: 0.0611,
   TN: 0.0955, TX: 0.0820, UT: 0.0722, VA: 0.0577, VT: 0.0636, WA: 0.0938, WI: 0.0543,
@@ -48,12 +47,16 @@ const CheckoutForm = memo(function CheckoutForm({
   lobbyId,
   role,
   basePrice,
+  selectedState,
+  onStateChange,
   onSuccess,
   onSubmittingStateChange,
 }: {
   lobbyId: string;
   role: 'HOST' | 'PARTNER';
   basePrice: number;
+  selectedState: string;
+  onStateChange: (newState: string) => void;
   onSuccess: () => void;
   onSubmittingStateChange: (isSubmitting: boolean) => void;
 }) {
@@ -63,20 +66,17 @@ const CheckoutForm = memo(function CheckoutForm({
   const [name, setName] = useState('');
   const [street, setStreet] = useState('');
   const [city, setCity] = useState('');
-  const [selectedState, setSelectedState] = useState('NY');
   const [zip, setZip] = useState('');
   const [phone, setPhone] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [rawErrorDetails, setRawErrorDetails] = useState<string>('');
 
-  // UNIFIED FEE CALCULATIONS (2.5% Platform Fee)
-  const splitShare = basePrice / 2; // e.g. $60.00
-  const platformFee = Math.round(splitShare * 0.025 * 100) / 100; // 2.5% = $1.50
+  const splitShare = basePrice / 2;
+  const platformFee = Math.round(splitShare * 0.025 * 100) / 100;
   const taxRate = STATE_TAX_RATES[selectedState] ?? 0.0853;
   const calculatedTax = Math.round(splitShare * taxRate * 100) / 100;
-  const stripeFee = Math.round((splitShare * 0.029 + 0.30) * 100) / 100; // $2.04
+  const stripeFee = Math.round((splitShare * 0.029 + 0.30) * 100) / 100;
  
   const totalAmountCharged = splitShare + calculatedTax + platformFee + stripeFee;
 
@@ -91,7 +91,6 @@ const CheckoutForm = memo(function CheckoutForm({
     setLoading(true);
     onSubmittingStateChange(true);
     setErrorMessage('');
-    setRawErrorDetails('');
 
     try {
       const currentOrigin =
@@ -102,9 +101,7 @@ const CheckoutForm = memo(function CheckoutForm({
 
       const result = await stripe.confirmPayment({
         elements,
-        confirmParams: {
-          return_url: redirectUrl,
-        },
+        confirmParams: { return_url: redirectUrl },
         redirect: 'if_required',
       });
 
@@ -115,10 +112,7 @@ const CheckoutForm = memo(function CheckoutForm({
 
       const paymentIntent = result.paymentIntent;
 
-      if (
-        paymentIntent &&
-        (paymentIntent.status === 'requires_capture' || paymentIntent.status === 'succeeded')
-      ) {
+      if (paymentIntent && (paymentIntent.status === 'requires_capture' || paymentIntent.status === 'succeeded')) {
         const isHost = role === 'HOST';
         const addressData: AddressData = {
           name,
@@ -136,9 +130,7 @@ const CheckoutForm = memo(function CheckoutForm({
 
         const { error: dbErr } = await supabase.from('lobbies').update(updateData).eq('id', lobbyId);
 
-        if (dbErr) {
-          throw new Error('Database sync failed: ' + dbErr.message);
-        }
+        if (dbErr) throw new Error('Database sync failed: ' + dbErr.message);
 
         if (isHost && typeof window !== 'undefined') {
           localStorage.setItem(`hosted_${lobbyId}`, 'true');
@@ -212,7 +204,7 @@ const CheckoutForm = memo(function CheckoutForm({
             <label className="block text-[11px] font-semibold text-neutral-300 mb-1">State</label>
             <select
               value={selectedState}
-              onChange={(e) => setSelectedState(e.target.value)}
+              onChange={(e) => onStateChange(e.target.value)}
               className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
             >
               {Object.keys(STATE_TAX_RATES).map((st) => (
@@ -247,7 +239,6 @@ const CheckoutForm = memo(function CheckoutForm({
         </div>
       </div>
 
-      {/* Synchronized Fee Breakdown */}
       <div className="bg-neutral-900/80 p-3.5 rounded-xl border border-neutral-800/80 text-xs space-y-2">
         <div className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 border-b border-neutral-800 pb-1.5">
           Hold Breakdown
@@ -303,6 +294,8 @@ const StripeCheckoutWrapper = memo(function StripeCheckoutWrapper({
   role,
   basePrice,
   clientSecret,
+  selectedState,
+  onStateChange,
   onSuccess,
   onSubmittingStateChange,
 }: {
@@ -310,17 +303,19 @@ const StripeCheckoutWrapper = memo(function StripeCheckoutWrapper({
   role: 'HOST' | 'PARTNER';
   basePrice: number;
   clientSecret: string;
+  selectedState: string;
+  onStateChange: (newState: string) => void;
   onSuccess: () => Promise<void>;
   onSubmittingStateChange: (isSubmitting: boolean) => void;
 }) {
-  const optionsRef = useRef({ clientSecret });
-
   return (
-    <Elements stripe={stripePromise} options={optionsRef.current}>
+    <Elements key={clientSecret} stripe={stripePromise} options={{ clientSecret }}>
       <CheckoutForm
         lobbyId={lobbyId}
         role={role}
         basePrice={basePrice}
+        selectedState={selectedState}
+        onStateChange={onStateChange}
         onSuccess={onSuccess}
         onSubmittingStateChange={onSubmittingStateChange}
       />
@@ -332,12 +327,12 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const [lobby, setLobby] = useState<LobbyData | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [role, setRole] = useState<'HOST' | 'PARTNER'>('PARTNER');
+  const [selectedState, setSelectedState] = useState<string>('NY');
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
   const [timeLeft, setTimeLeft] = useState(899);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  const intentCreatedRef = useRef<boolean>(false);
   const isSubmittingRef = useRef<boolean>(false);
 
   useEffect(() => {
@@ -349,6 +344,20 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;
     return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
+  const createPaymentIntent = async (currentRole: 'HOST' | 'PARTNER', state: string) => {
+    const res = await fetch('/api/create-payment-intent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lobbyId, role: currentRole, userState: state }),
+    });
+    const intentData = await res.json();
+    if (intentData.clientSecret) {
+      setClientSecret(intentData.clientSecret);
+    } else if (intentData.error) {
+      setFetchError(`Payment Intent Error: ${intentData.error}`);
+    }
   };
 
   const fetchLobbyState = async () => {
@@ -370,21 +379,18 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     const hasUserPaid =
       currentRole === 'HOST' ? !!data.host_payment_intent_id : !!data.partner_payment_intent_id;
 
-    if (!hasUserPaid && data.status !== 'MATCHED' && !intentCreatedRef.current) {
-      intentCreatedRef.current = true;
-      const res = await fetch('/api/create-payment-intent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lobbyId, role: currentRole }),
-      });
-      const intentData = await res.json();
-      if (intentData.clientSecret) {
-        setClientSecret(intentData.clientSecret);
-      } else if (intentData.error) {
-        setFetchError(`Payment Intent Error: ${intentData.error}`);
-      }
+    if (!hasUserPaid && data.status !== 'MATCHED') {
+      await createPaymentIntent(currentRole, selectedState);
     }
     setLoading(false);
+  };
+
+  const handleStateChange = async (newState: string) => {
+    setSelectedState(newState);
+    if (lobby && role) {
+      setClientSecret(null);
+      await createPaymentIntent(role, newState);
+    }
   };
 
   useEffect(() => {
@@ -412,7 +418,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   }, [lobbyId]);
 
   const handlePaymentSuccess = async () => {
-    intentCreatedRef.current = false;
     setClientSecret(null);
     await fetchLobbyState();
   };
@@ -441,17 +446,16 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     );
   }
 
-  // MATCHED CONFIRMATION RECEIPT (UNIFIED 2.5% PLATFORM FEE)
   if (lobby.status === 'MATCHED') {
     const originalPrice = Number(lobby.item_price) || 0;
     const splitBase = originalPrice / 2;
-    const platformFee = Math.round(splitBase * 0.025 * 100) / 100; // $1.50
+    const platformFee = Math.round(splitBase * 0.025 * 100) / 100;
 
     const userAddress = role === 'HOST' ? lobby.user_a_address : lobby.user_b_address;
-    const userState = userAddress?.state || 'NY';
+    const userState = userAddress?.state || selectedState;
     const stateTaxRate = STATE_TAX_RATES[userState] ?? 0.0853;
     const calculatedTax = Math.round(splitBase * stateTaxRate * 100) / 100;
-    const stripeFee = Math.round((splitBase * 0.029 + 0.30) * 100) / 100; // $2.04
+    const stripeFee = Math.round((splitBase * 0.029 + 0.30) * 100) / 100;
 
     const totalPaidWithTax = splitBase + calculatedTax + platformFee + stripeFee;
     const totalSaved = originalPrice - splitBase;
@@ -578,6 +582,8 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
             role={role}
             basePrice={lobby.item_price}
             clientSecret={clientSecret}
+            selectedState={selectedState}
+            onStateChange={handleStateChange}
             onSuccess={handlePaymentSuccess}
             onSubmittingStateChange={(submitting) => {
               isSubmittingRef.current = submitting;
@@ -602,3 +608,4 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     </div>
   );
 }
+
