@@ -7,6 +7,17 @@ import { supabase } from '@/lib/supabase';
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 
+// State Tax Rate Map for standard US States
+const STATE_TAX_RATES: Record<string, number> = {
+  AL: 0.04, AK: 0.00, AZ: 0.056, AR: 0.065, CA: 0.0725, CO: 0.029, CT: 0.0635,
+  DE: 0.00, FL: 0.06, GA: 0.04, HI: 0.04, ID: 0.06, IL: 0.0625, IN: 0.07,
+  IA: 0.06, KS: 0.065, KY: 0.06, LA: 0.0445, ME: 0.055, MD: 0.06, MA: 0.0625,
+  MI: 0.06, MN: 0.06875, MS: 0.07, MO: 0.04225, MT: 0.00, NE: 0.055, NV: 0.0685,
+  NH: 0.00, NJ: 0.06625, NM: 0.05125, NY: 0.08875, NC: 0.0475, ND: 0.05, OH: 0.0575,
+  OK: 0.045, OR: 0.00, PA: 0.06, RI: 0.07, SC: 0.06, SD: 0.045, TN: 0.07,
+  TX: 0.0625, UT: 0.061, VT: 0.06, VA: 0.053, WA: 0.065, WV: 0.06, WI: 0.05, WY: 0.04,
+};
+
 export interface AddressData {
   name: string;
   street1: string;
@@ -14,6 +25,7 @@ export interface AddressData {
   state: string;
   zip: string;
   phone: string;
+  taxRate?: number;
 }
 
 export interface LobbyData {
@@ -32,16 +44,18 @@ export interface LobbyData {
 }
 
 // -------------------------------------------------------------
-// ISOLATED CHECKOUT FORM
+// ISOLATED CHECKOUT FORM WITH DYNAMIC STATE TAX SELECTOR
 // -------------------------------------------------------------
 const CheckoutForm = memo(function CheckoutForm({
   lobbyId,
   role,
+  basePrice,
   onSuccess,
   onSubmittingStateChange,
 }: {
   lobbyId: string;
   role: 'HOST' | 'PARTNER';
+  basePrice: number;
   onSuccess: () => void;
   onSubmittingStateChange: (isSubmitting: boolean) => void;
 }) {
@@ -51,13 +65,19 @@ const CheckoutForm = memo(function CheckoutForm({
   const [name, setName] = useState('');
   const [street, setStreet] = useState('');
   const [city, setCity] = useState('');
-  const [state, setState] = useState('NY');
+  const [selectedState, setSelectedState] = useState('NY');
   const [zip, setZip] = useState('');
   const [phone, setPhone] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [rawErrorDetails, setRawErrorDetails] = useState<string>('');
+
+  // Calculate split share and state tax dynamically
+  const splitShare = basePrice / 2;
+  const taxRate = STATE_TAX_RATES[selectedState] ?? 0.08;
+  const calculatedTax = Math.round(splitShare * taxRate * 100) / 100;
+  const totalAmountCharged = splitShare + calculatedTax;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -110,7 +130,15 @@ const CheckoutForm = memo(function CheckoutForm({
         (paymentIntent.status === 'requires_capture' || paymentIntent.status === 'succeeded')
       ) {
         const isHost = role === 'HOST';
-        const addressData: AddressData = { name, street1: street, city, state, zip, phone };
+        const addressData: AddressData = {
+          name,
+          street1: street,
+          city,
+          state: selectedState,
+          zip,
+          phone,
+          taxRate,
+        };
 
         const updateData = isHost
           ? { host_payment_intent_id: paymentIntent.id, user_a_address: addressData }
@@ -195,14 +223,17 @@ const CheckoutForm = memo(function CheckoutForm({
           </div>
           <div>
             <label className="block text-[11px] font-semibold text-neutral-300 mb-1">State</label>
-            <input
-              type="text"
-              placeholder="NY"
-              required
-              value={state}
-              onChange={(e) => setState(e.target.value.toUpperCase())}
-              className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white uppercase"
-            />
+            <select
+              value={selectedState}
+              onChange={(e) => setSelectedState(e.target.value)}
+              className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            >
+              {Object.keys(STATE_TAX_RATES).map((st) => (
+                <option key={st} value={st}>
+                  {st} ({(STATE_TAX_RATES[st] * 100).toFixed(2)}%)
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="block text-[11px] font-semibold text-neutral-300 mb-1">ZIP</label>
@@ -226,6 +257,22 @@ const CheckoutForm = memo(function CheckoutForm({
             onChange={(e) => setPhone(e.target.value)}
             className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white"
           />
+        </div>
+      </div>
+
+      {/* Dynamic State Tax Summary */}
+      <div className="bg-neutral-900/80 p-3.5 rounded-xl border border-neutral-800/80 text-xs space-y-1.5">
+        <div className="flex justify-between text-neutral-400">
+          <span>{role === 'HOST' ? 'Host' : 'Partner'} Share (50% Base):</span>
+          <span className="font-mono text-white">${splitShare.toFixed(2)}</span>
+        </div>
+        <div className="flex justify-between text-neutral-400">
+          <span>Estimated Sales Tax ({selectedState}):</span>
+          <span className="font-mono text-white">${calculatedTax.toFixed(2)}</span>
+        </div>
+        <div className="flex justify-between text-emerald-400 font-bold border-t border-neutral-800 pt-1.5 text-sm">
+          <span>Total Authorized Hold:</span>
+          <span className="font-mono">${totalAmountCharged.toFixed(2)}</span>
         </div>
       </div>
 
@@ -254,7 +301,7 @@ const CheckoutForm = memo(function CheckoutForm({
       >
         {loading
           ? 'Securing Hold...'
-          : `Authorize & Claim ${role === 'HOST' ? 'Host' : 'Partner'} Share`}
+          : `Authorize $${totalAmountCharged.toFixed(2)} Hold`}
       </button>
     </form>
   );
@@ -266,12 +313,14 @@ const CheckoutForm = memo(function CheckoutForm({
 const StripeCheckoutWrapper = memo(function StripeCheckoutWrapper({
   lobbyId,
   role,
+  basePrice,
   clientSecret,
   onSuccess,
   onSubmittingStateChange,
 }: {
   lobbyId: string;
   role: 'HOST' | 'PARTNER';
+  basePrice: number;
   clientSecret: string;
   onSuccess: () => Promise<void>;
   onSubmittingStateChange: (isSubmitting: boolean) => void;
@@ -283,6 +332,7 @@ const StripeCheckoutWrapper = memo(function StripeCheckoutWrapper({
       <CheckoutForm
         lobbyId={lobbyId}
         role={role}
+        basePrice={basePrice}
         onSuccess={onSuccess}
         onSubmittingStateChange={onSubmittingStateChange}
       />
@@ -409,19 +459,24 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   }
 
   // -------------------------------------------------------------
-  // MATCHED CONFIRMATION VIEW (Clear Price, Tax & Savings Breakdown)
+  // MATCHED CONFIRMATION VIEW (Dynamic Tax Calculation)
   // -------------------------------------------------------------
   if (lobby.status === 'MATCHED') {
-    const originalPrice = Number(lobby.item_price) || 0; // e.g. 120.00
-    const splitBase = originalPrice / 2; // e.g. 60.00
-    const totalPaidWithTax = 65.04; // Verified Stripe transaction amount
-    const taxAndFees = totalPaidWithTax - splitBase; // e.g. 5.04
-    const totalSaved = originalPrice - splitBase; // e.g. 60.00
+    const originalPrice = Number(lobby.item_price) || 0;
+    const splitBase = originalPrice / 2;
+
+    // Retrieve state & tax rate from current user role or fallback
+    const userAddress = role === 'HOST' ? lobby.user_a_address : lobby.user_b_address;
+    const userState = userAddress?.state || 'NY';
+    const stateTaxRate = STATE_TAX_RATES[userState] ?? 0.08875;
+    const calculatedTax = Math.round(splitBase * stateTaxRate * 100) / 100;
+    const totalPaidWithTax = splitBase + calculatedTax;
+    const totalSaved = originalPrice - splitBase;
 
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-neutral-950 border border-emerald-500/30 shadow-2xl rounded-3xl p-6 sm:p-8 text-center space-y-6">
-          {/* Success Checkmark & Highlight Badge */}
+          {/* Success Badge */}
           <div className="space-y-3">
             <div className="w-16 h-16 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-full flex items-center justify-center mx-auto text-3xl font-extrabold shadow-lg shadow-emerald-500/10">
               ✓
@@ -466,8 +521,8 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
             </div>
 
             <div className="flex justify-between text-neutral-300">
-              <span className="text-neutral-400">Estimated Tax & Processing:</span>
-              <span className="font-mono text-neutral-300">${taxAndFees.toFixed(2)}</span>
+              <span className="text-neutral-400">Sales Tax ({userState}):</span>
+              <span className="font-mono text-neutral-300">${calculatedTax.toFixed(2)}</span>
             </div>
 
             <div className="flex justify-between text-white border-t border-neutral-800 pt-2.5 font-bold text-sm">
@@ -538,6 +593,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           <StripeCheckoutWrapper
             lobbyId={lobbyId}
             role={role}
+            basePrice={lobby.item_price}
             clientSecret={clientSecret}
             onSuccess={handlePaymentSuccess}
             onSubmittingStateChange={(submitting) => {
