@@ -145,50 +145,11 @@ export async function POST(req: Request) {
       console.error('Failed to update lobby with issuing card metadata:', updateErr);
     }
 
-    // 6. DISPATCH ASYNCHRONOUS CHECKOUT JOB TO RAILWAY PLAYWRIGHT WORKER
-    let railwayWorkerUrl = process.env.RAILWAY_WORKER_URL || 'https://bogo-prototype-production-685c.up.railway.app';
-
-    // Ensure protocol is included
-    if (railwayWorkerUrl && !railwayWorkerUrl.startsWith('http://') && !railwayWorkerUrl.startsWith('https://')) {
-      railwayWorkerUrl = `https://${railwayWorkerUrl}`;
-    }
-
-    // Strip trailing slashes
-    railwayWorkerUrl = railwayWorkerUrl.replace(/\/+$/, '');
-
-    const workerSecret = process.env.WORKER_SECRET || 'bogo_secret_token_123';
-
-    if (railwayWorkerUrl) {
-      try {
-        console.log(`Dispatching checkout job to Railway worker: ${railwayWorkerUrl}/api/run-checkout`);
-
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
-
-        const dispatchRes = await fetch(`${railwayWorkerUrl}/api/run-checkout`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${workerSecret}`,
-          },
-          body: JSON.stringify({ lobbyId }),
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        console.log(`Railway dispatch response status: ${dispatchRes.status}`);
-      } catch (err: any) {
-        console.error('Failed to dispatch checkout job to Railway worker:', err.message);
-      }
-    } else {
-      console.warn('RAILWAY_WORKER_URL missing. Automated checkout worker was not triggered.');
-    }
-
+    // 6. RETURN SUCCESSFUL MATCH DATA IMMEDIATELY TO FRONTEND
     return NextResponse.json(
       {
         success: true,
-        message: 'Dual holds captured, virtual card issued, and Playwright worker notified!',
+        message: 'Dual holds captured successfully and virtual card issued!',
         lobbyId,
         card: {
           id: virtualCard.id,
@@ -208,3 +169,5 @@ export async function POST(req: Request) {
     );
   }
 }
+
+
