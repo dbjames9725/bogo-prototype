@@ -8,13 +8,25 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
+// UNIFIED COMBINED STATE + LOCAL TAX RATES
+const STATE_TAX_RATES: Record<string, number> = {
+  AK: 0.0181, AL: 0.0924, AR: 0.0944, AZ: 0.0837, CA: 0.0885, CO: 0.0778, CT: 0.0635,
+  DC: 0.0600, DE: 0.0000, FL: 0.0700, GA: 0.0738, HI: 0.0444, IA: 0.0694, ID: 0.0603,
+  IL: 0.0884, IN: 0.0700, KS: 0.0865, KY: 0.0600, LA: 0.0956, MA: 0.0625, MD: 0.0600,
+  ME: 0.0550, MI: 0.0600, MN: 0.0803, MS: 0.0707, MO: 0.0833, MT: 0.0000, NC: 0.0698,
+  ND: 0.0696, NE: 0.0697, NH: 0.0000, NJ: 0.0660, NM: 0.0772, NV: 0.0823, NY: 0.0853,
+  OH: 0.0724, OK: 0.0899, OR: 0.0000, PA: 0.0634, RI: 0.0700, SC: 0.0744, SD: 0.0611,
+  TN: 0.0955, TX: 0.0820, UT: 0.0722, VA: 0.0577, VT: 0.0636, WA: 0.0938, WI: 0.0543,
+  WV: 0.0657, WY: 0.0536,
+};
+
 export async function OPTIONS() {
   return NextResponse.json({}, { headers: corsHeaders });
 }
 
 export async function POST(req: Request) {
   try {
-    const { lobbyId, role } = await req.json();
+    const { lobbyId, role, userState } = await req.json();
 
     if (!lobbyId || !role) {
       return NextResponse.json(
@@ -36,30 +48,32 @@ export async function POST(req: Request) {
       );
     }
 
-    // Precise pre-tax amount calculations in integer cents
     const itemPrice = Number(lobby.item_price) || 0;
-    const itemPriceCents = Math.round(itemPrice * 100);
-
     const dealType = (lobby.deal_type || 'BOGO').toUpperCase();
     const isBogo50 = dealType === 'BOGO_50' || dealType === 'BUY_1_GET_1_50_OFF';
 
-    const bogoPromoTotalCents = isBogo50 ? Math.round(itemPriceCents * 1.5) : itemPriceCents;
-    const baseShareCents = Math.round(bogoPromoTotalCents / 2);
+    // 1. Base Split Share
+    const bogoPromoTotal = isBogo50 ? itemPrice * 1.5 : itemPrice;
+    const splitBase = bogoPromoTotal / 2; // e.g. $60.00 for a $120 item
 
-    const totalPlatformFeeCents = Math.round(itemPriceCents * 0.05);
-    const platformFeeCents = Math.round(totalPlatformFeeCents / 2);
+    // 2. Platform Fee (2.5% of Split Base = $1.50)
+    const platformFee = Math.round(splitBase * 0.025 * 100) / 100;
 
-    const stripeFeeCents = Math.round(baseShareCents * 0.029 + 30);
+    // 3. Dynamic State Tax (Reads selected state or defaults to NY 8.53%)
+    const selectedState = (userState || 'NY').toUpperCase();
+    const taxRate = STATE_TAX_RATES[selectedState] ?? 0.0853;
+    const calculatedTax = Math.round(splitBase * taxRate * 100) / 100;
 
-    const totalAmountCents = Math.round(baseShareCents + platformFeeCents + stripeFeeCents);
-    const validAmountCents = Math.max(50, totalAmountCents);
+    // 4. Stripe Fee (2.9% + $0.30)
+    const stripeFee = Math.round((splitBase * 0.029 + 0.30) * 100) / 100;
+
+    // 5. Total Hold Amount in Cents
+    const totalAmount = splitBase + platformFee + calculatedTax + stripeFee;
+    const validAmountCents = Math.max(50, Math.round(totalAmount * 100));
 
     const isHost = role === 'HOST';
-
-    // Strictly format short descriptors (Max 22 chars) to prevent Stripe validation errors
     const shortLobbyId = String(lobbyId).replace(/[^a-zA-Z0-9]/g, '').substring(0, 8);
 
-    // Create an isolated PaymentIntent strictly for manual hold capture
     const paymentIntent = await stripe.paymentIntents.create({
       amount: validAmountCents,
       currency: 'usd',
@@ -70,7 +84,10 @@ export async function POST(req: Request) {
         lobbyId,
         role,
         dealType,
-        participantRole: isHost ? 'Host' : 'Partner'
+        userState: selectedState,
+        taxAmount: calculatedTax.toString(),
+        platformFee: platformFee.toString(),
+        participantRole: isHost ? 'Host' : 'Partner',
       },
     });
 
@@ -89,3 +106,4 @@ export async function POST(req: Request) {
     );
   }
 }
+
