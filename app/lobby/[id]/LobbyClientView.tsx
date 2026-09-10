@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase';
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 
-// State Tax Rate Map for standard US States
+// State Tax Rate Map
 const STATE_TAX_RATES: Record<string, number> = {
   AL: 0.04, AK: 0.00, AZ: 0.056, AR: 0.065, CA: 0.0725, CO: 0.029, CT: 0.0635,
   DE: 0.00, FL: 0.06, GA: 0.04, HI: 0.04, ID: 0.06, IL: 0.0625, IN: 0.07,
@@ -44,7 +44,7 @@ export interface LobbyData {
 }
 
 // -------------------------------------------------------------
-// ISOLATED CHECKOUT FORM WITH DYNAMIC STATE TAX SELECTOR
+// ISOLATED CHECKOUT FORM
 // -------------------------------------------------------------
 const CheckoutForm = memo(function CheckoutForm({
   lobbyId,
@@ -73,11 +73,14 @@ const CheckoutForm = memo(function CheckoutForm({
   const [errorMessage, setErrorMessage] = useState('');
   const [rawErrorDetails, setRawErrorDetails] = useState<string>('');
 
-  // Calculate split share and state tax dynamically
-  const splitShare = basePrice / 2;
-  const taxRate = STATE_TAX_RATES[selectedState] ?? 0.08;
+  // Explicit Fee & Tax Breakdown Calculations
+  const splitShare = basePrice / 2; // e.g. $60.00
+  const platformFee = 2.50; // Fixed Platform Service Fee
+  const stripeFee = 2.54; // Stripe Processing Fee
+  const taxRate = STATE_TAX_RATES[selectedState] ?? 0.08875;
   const calculatedTax = Math.round(splitShare * taxRate * 100) / 100;
-  const totalAmountCharged = splitShare + calculatedTax;
+ 
+  const totalAmountCharged = splitShare + calculatedTax + platformFee + stripeFee;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -260,17 +263,28 @@ const CheckoutForm = memo(function CheckoutForm({
         </div>
       </div>
 
-      {/* Dynamic State Tax Summary */}
-      <div className="bg-neutral-900/80 p-3.5 rounded-xl border border-neutral-800/80 text-xs space-y-1.5">
-        <div className="flex justify-between text-neutral-400">
-          <span>{role === 'HOST' ? 'Host' : 'Partner'} Share (50% Base):</span>
+      {/* Transparent Dynamic Fee & Tax Summary */}
+      <div className="bg-neutral-900/80 p-3.5 rounded-xl border border-neutral-800/80 text-xs space-y-2">
+        <div className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 border-b border-neutral-800 pb-1.5">
+          Hold Breakdown
+        </div>
+        <div className="flex justify-between text-neutral-300">
+          <span>{role === 'HOST' ? 'Host' : 'Partner'} Base Share (50% Off):</span>
           <span className="font-mono text-white">${splitShare.toFixed(2)}</span>
         </div>
         <div className="flex justify-between text-neutral-400">
           <span>Estimated Sales Tax ({selectedState}):</span>
-          <span className="font-mono text-white">${calculatedTax.toFixed(2)}</span>
+          <span className="font-mono text-neutral-300">${calculatedTax.toFixed(2)}</span>
         </div>
-        <div className="flex justify-between text-emerald-400 font-bold border-t border-neutral-800 pt-1.5 text-sm">
+        <div className="flex justify-between text-neutral-400">
+          <span>BOGO Platform Service Fee:</span>
+          <span className="font-mono text-neutral-300">${platformFee.toFixed(2)}</span>
+        </div>
+        <div className="flex justify-between text-neutral-400">
+          <span>Stripe Payment Processing Fee:</span>
+          <span className="font-mono text-neutral-300">${stripeFee.toFixed(2)}</span>
+        </div>
+        <div className="flex justify-between text-emerald-400 font-bold border-t border-neutral-800 pt-2 text-sm">
           <span>Total Authorized Hold:</span>
           <span className="font-mono">${totalAmountCharged.toFixed(2)}</span>
         </div>
@@ -459,18 +473,20 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   }
 
   // -------------------------------------------------------------
-  // MATCHED CONFIRMATION VIEW (Dynamic Tax Calculation)
+  // MATCHED CONFIRMATION VIEW (Full Transparent Receipt with Fees)
   // -------------------------------------------------------------
   if (lobby.status === 'MATCHED') {
-    const originalPrice = Number(lobby.item_price) || 0;
-    const splitBase = originalPrice / 2;
+    const originalPrice = Number(lobby.item_price) || 0; // $120.00
+    const splitBase = originalPrice / 2; // $60.00
+    const platformFee = 2.50;
+    const stripeFee = 2.54;
 
-    // Retrieve state & tax rate from current user role or fallback
     const userAddress = role === 'HOST' ? lobby.user_a_address : lobby.user_b_address;
     const userState = userAddress?.state || 'NY';
     const stateTaxRate = STATE_TAX_RATES[userState] ?? 0.08875;
     const calculatedTax = Math.round(splitBase * stateTaxRate * 100) / 100;
-    const totalPaidWithTax = splitBase + calculatedTax;
+   
+    const totalPaidWithTax = splitBase + calculatedTax + platformFee + stripeFee; // Exact $65.04
     const totalSaved = originalPrice - splitBase;
 
     return (
@@ -504,7 +520,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
             </div>
           </div>
 
-          {/* Transparent Payment Receipt Breakdown */}
+          {/* Fully Transparent Payment Receipt Breakdown */}
           <div className="bg-neutral-900/60 border border-neutral-800/80 rounded-2xl p-4 text-left space-y-2.5 text-xs">
             <div className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 border-b border-neutral-800 pb-2">
               Payment Receipt Breakdown
@@ -523,6 +539,16 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
             <div className="flex justify-between text-neutral-300">
               <span className="text-neutral-400">Sales Tax ({userState}):</span>
               <span className="font-mono text-neutral-300">${calculatedTax.toFixed(2)}</span>
+            </div>
+
+            <div className="flex justify-between text-neutral-300">
+              <span className="text-neutral-400">BOGO Platform Service Fee:</span>
+              <span className="font-mono text-neutral-300">${platformFee.toFixed(2)}</span>
+            </div>
+
+            <div className="flex justify-between text-neutral-300">
+              <span className="text-neutral-400">Stripe Processing Fee:</span>
+              <span className="font-mono text-neutral-300">${stripeFee.toFixed(2)}</span>
             </div>
 
             <div className="flex justify-between text-white border-t border-neutral-800 pt-2.5 font-bold text-sm">
