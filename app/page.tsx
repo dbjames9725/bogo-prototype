@@ -30,7 +30,7 @@ export default function HomePage() {
   const [activePrice, setActivePrice] = useState<number>(120);
   const [dealType, setDealType] = useState<'BOGO_FREE' | 'BOGO_50'>('BOGO_FREE');
   const [selectedState, setSelectedState] = useState<string>('NY');
-  const [includeTax, setIncludeTax] = useState<boolean>(false);
+  const [includeTax, setIncludeTax] = useState<boolean>(true);
 
   const [isCreatingLobby, setIsCreatingLobby] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
@@ -38,12 +38,17 @@ export default function HomePage() {
   const itemPrice = Math.max(0.01, activePrice);
   const isBogo50 = dealType === 'BOGO_50';
   const bogoPromoTotal = isBogo50 ? itemPrice * 1.5 : itemPrice;
-  const yourSplitShare = bogoPromoTotal / 2;
-  const platformFee = (itemPrice * 0.05) / 2;
+  const yourSplitShare = bogoPromoTotal / 2; // e.g. $60.00
 
-  const stateInfo = STATE_TAX_RATES[selectedState] || { name: 'Default', rate: 0.07 };
-  const estimatedTax = includeTax ? yourSplitShare * stateInfo.rate : 0;
-  const stripeFee = (yourSplitShare + estimatedTax) * 0.029 + 0.30;
+  // 2.5% Platform Fee Calculation ($1.50 for $60 share)
+  const platformFee = Math.round(yourSplitShare * 0.025 * 100) / 100;
+
+  const stateInfo = STATE_TAX_RATES[selectedState] || { name: 'Default', rate: 0.0853 };
+  const estimatedTax = includeTax ? Math.round(yourSplitShare * stateInfo.rate * 100) / 100 : 0;
+ 
+  // Standard Stripe Fee Formula: 2.9% + $0.30
+  const stripeFee = Math.round((yourSplitShare * 0.029 + 0.30) * 100) / 100;
+ 
   const totalAmountDue = yourSplitShare + platformFee + estimatedTax + stripeFee;
 
   const handleLockInSplit = async () => {
@@ -87,7 +92,7 @@ export default function HomePage() {
        
         <div className="text-center space-y-2">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-semibold">
-            <span>⚡ BOGO Split Engine</span>
+            <span>BOGO Split Engine</span>
           </div>
           <h1 className="text-3xl font-black tracking-tight text-white sm:text-4xl">
             Split Any Deal 50/50
@@ -100,7 +105,7 @@ export default function HomePage() {
         <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-2xl space-y-6">
           <div className="border-b border-neutral-800 pb-4">
             <div className="flex items-center gap-2 text-xs font-extrabold uppercase text-blue-400 tracking-wider">
-              <span>🧮 Interactive Savings Simulator</span>
+              <span>Interactive Savings Simulator</span>
             </div>
             <p className="text-xs text-neutral-400 mt-1">
               Adjust retail price & deal type to project your personal savings.
@@ -185,6 +190,7 @@ export default function HomePage() {
             </div>
           </div>
 
+          {/* Fee & Price Breakdown Summary */}
           <div className="bg-neutral-950 p-5 rounded-2xl border border-neutral-800 space-y-3 text-sm">
             <div className="flex justify-between text-neutral-400">
               <span>BOGO Promo Total (Pre-tax)</span>
@@ -204,7 +210,7 @@ export default function HomePage() {
             </div>
 
             <div className="flex justify-between text-xs text-neutral-400">
-              <span>Platform Fee (5% Retail Split)</span>
+              <span>Platform Fee (2.5% Retail Split)</span>
               <span className="font-semibold text-neutral-300">+${platformFee.toFixed(2)}</span>
             </div>
 
@@ -237,26 +243,26 @@ export default function HomePage() {
 
               {includeTax && (
                 <div className="flex justify-between text-xs text-neutral-400">
-                  <span>Estimated {selectedState} Sales Tax</span>
+                  <span>Estimated Sales Tax ({selectedState})</span>
                   <span className="font-semibold text-neutral-300">+${estimatedTax.toFixed(2)}</span>
                 </div>
               )}
-            </div>
 
-            <div className="flex justify-between text-xs text-neutral-400">
-              <span>Stripe Processing Fee</span>
-              <span className="font-semibold text-neutral-300">+${stripeFee.toFixed(2)}</span>
-            </div>
+              <div className="flex justify-between text-xs text-neutral-400">
+                <span>Stripe Processing Fee</span>
+                <span className="font-semibold text-neutral-300">+${stripeFee.toFixed(2)}</span>
+              </div>
 
-            <div className="flex justify-between text-base font-black text-white pt-3 border-t border-neutral-800">
-              <span>Total Amount Due</span>
-              <span className="text-blue-400">${totalAmountDue.toFixed(2)}</span>
+              <div className="flex justify-between text-sm font-black text-emerald-400 pt-2 border-t border-neutral-800">
+                <span>Total Amount Due</span>
+                <span className="font-mono">${totalAmountDue.toFixed(2)}</span>
+              </div>
             </div>
           </div>
 
           {errorMessage && (
-            <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs rounded-xl font-semibold text-center">
-              ⚠️ {errorMessage}
+            <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs rounded-xl font-bold text-center">
+              {errorMessage}
             </div>
           )}
 
@@ -264,22 +270,11 @@ export default function HomePage() {
             type="button"
             onClick={handleLockInSplit}
             disabled={isCreatingLobby}
-            className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-xl shadow-lg transition flex items-center justify-center gap-2 cursor-pointer text-base disabled:opacity-50"
+            className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-extrabold rounded-xl shadow-lg transition text-base cursor-pointer transform active:scale-95 disabled:opacity-50"
           >
-            {isCreatingLobby ? (
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                <span>Creating BOGO Lobby...</span>
-              </div>
-            ) : (
-              <>
-                <span>Lock In This Split</span>
-                <span>➔</span>
-              </>
-            )}
+            {isCreatingLobby ? 'Creating BOGO Lobby...' : 'Lock In Split & Get Share Link'}
           </button>
         </div>
-
       </div>
     </main>
   );

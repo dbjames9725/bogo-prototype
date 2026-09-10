@@ -58,38 +58,38 @@ const STATE_TAX_RATES: Record<string, { name: string; rate: number }> = {
 };
 
 export default function CheckoutForm() {
-  const [activePrice, setActivePrice] = useState<number>(125);
+  const [activePrice, setActivePrice] = useState<number>(120);
   const [dealType, setDealType] = useState<'BOGO_FREE' | 'BOGO_50'>('BOGO_FREE');
   const [selectedState, setSelectedState] = useState<string>('NY');
-  const [includeTax, setIncludeTax] = useState<boolean>(false);
+  const [includeTax, setIncludeTax] = useState<boolean>(true);
 
   // -------------------------------------------------------------
-  // CLEAN PRE-TAX MATH ENGINE
+  // UNIFIED PRE-TAX MATH ENGINE
   // -------------------------------------------------------------
   const itemPrice = Math.max(0.01, activePrice);
 
-  // 1. Standard Retail Cost for TWO items ($125 * 2 = $250.00)
+  // 1. Standard Retail Cost for TWO items
   const standardRetailCost2Items = itemPrice * 2;
 
-  // 2. BOGO Promo Total (Pre-tax total for both items: $125.00 for BOGO Free)
+  // 2. BOGO Promo Total (Pre-tax total for both items)
   const isBogo50 = dealType === 'BOGO_50';
   const bogoPromoTotal = isBogo50 ? itemPrice * 1.5 : itemPrice;
 
-  // 3. Your Split Share (Pre-tax share: $125 / 2 = $62.50)
+  // 3. Your Split Share (Pre-tax base share)
   const yourSplitShare = bogoPromoTotal / 2;
 
-  // 4. Platform Fee (5% of single retail item split: $125 * 0.05 / 2 = $3.13)
-  const platformFee = (itemPrice * 0.05) / 2;
+  // 4. Platform Fee (2.5% of split share: e.g. $60 * 0.025 = $1.50)
+  const platformFee = Math.round(yourSplitShare * 0.025 * 100) / 100;
 
   // 5. Personal Savings per person
   const personalSavings = itemPrice - yourSplitShare;
 
-  // 6. Optional Sales Tax (Only calculated if checkbox is selected)
-  const stateInfo = STATE_TAX_RATES[selectedState] || { name: 'Default', rate: 0.07 };
-  const estimatedTax = includeTax ? yourSplitShare * stateInfo.rate : 0;
+  // 6. Optional Sales Tax
+  const stateInfo = STATE_TAX_RATES[selectedState] || { name: 'Default', rate: 0.0853 };
+  const estimatedTax = includeTax ? Math.round(yourSplitShare * stateInfo.rate * 100) / 100 : 0;
 
   // 7. Stripe Processing Fee (2.9% + $0.30)
-  const stripeFee = (yourSplitShare + estimatedTax) * 0.029 + 0.30;
+  const stripeFee = Math.round((yourSplitShare * 0.029 + 0.30) * 100) / 100;
 
   // 8. Total Amount Due per person
   const totalAmountDue = yourSplitShare + platformFee + estimatedTax + stripeFee;
@@ -99,7 +99,7 @@ export default function CheckoutForm() {
       {/* Header */}
       <div className="border-b border-gray-100 pb-4">
         <div className="flex items-center gap-2 text-xs font-extrabold uppercase text-blue-600 tracking-wider">
-          <span>🧮 Interactive Savings Simulator</span>
+          <span>Interactive Savings Simulator</span>
         </div>
         <p className="text-xs text-gray-500 mt-1">
           Adjust retail price & deal type to project your personal savings.
@@ -198,7 +198,7 @@ export default function CheckoutForm() {
         </div>
 
         <div className="flex justify-between text-xs text-gray-500">
-          <span>Platform Fee (5% Retail Split)</span>
+          <span>Platform Fee (2.5% Retail Split)</span>
           <span className="font-semibold">+${platformFee.toFixed(2)}</span>
         </div>
 
@@ -260,7 +260,6 @@ export default function CheckoutForm() {
             Save ${personalSavings.toFixed(2)} ({isBogo50 ? '25%' : '50%'} Off)
           </span>
         </div>
-        <span className="text-2xl">🎉</span>
       </div>
     </div>
   );
