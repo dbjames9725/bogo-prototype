@@ -150,7 +150,7 @@ const CheckoutForm = memo(function CheckoutForm({
       }
     } catch (err: any) {
       setErrorMessage(err.message || 'An unexpected client-side error occurred');
-    } font-bold {
+    } finally {
       setLoading(false);
       onSubmittingStateChange(false);
     }
@@ -333,7 +333,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const [role, setRole] = useState<'HOST' | 'PARTNER'>('PARTNER');
   const [isUpdatingIntent, setIsUpdatingIntent] = useState<boolean>(false);
 
-  // Store active paymentIntentId so state dropdown changes UPDATE instead of CREATE
   const intentIdRef = useRef<string | null>(null);
 
   const [formData, setFormData] = useState<AddressData>({
@@ -373,7 +372,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           lobbyId,
           role: currentRole,
           userState: state,
-          paymentIntentId: intentIdRef.current, // Pass current intent ID to update in-place
+          paymentIntentId: intentIdRef.current,
         }),
       });
       const intentData = await res.json();
