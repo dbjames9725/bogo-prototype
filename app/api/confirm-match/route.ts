@@ -54,10 +54,34 @@ export async function POST(req: Request) {
       );
     }
 
-    // 2. CAPTURE DUAL PAYMENT HOLDS FROM STRIPE
+    // 2. VERIFY BOTH INTENTS ARE CAPTURABLE BEFORE ATTEMPTING CAPTURE
+    const [hostIntent, partnerIntent] = await Promise.all([
+      stripe.paymentIntents.retrieve(host_payment_intent_id),
+      stripe.paymentIntents.retrieve(partner_payment_intent_id),
+    ]);
+
+    if (hostIntent.status !== 'requires_capture' && hostIntent.status !== 'succeeded') {
+      return NextResponse.json(
+        { error: `Host payment intent is in invalid state: ${hostIntent.status}` },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
+    if (partnerIntent.status !== 'requires_capture' && partnerIntent.status !== 'succeeded') {
+      return NextResponse.json(
+        { error: `Partner payment intent is in invalid state: ${partnerIntent.status}` },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
+    // 3. CAPTURE DUAL PAYMENT HOLDS IN PARALLEL
     const [hostCapture, partnerCapture] = await Promise.all([
-      stripe.paymentIntents.capture(host_payment_intent_id),
-      stripe.paymentIntents.capture(partner_payment_intent_id),
+      hostIntent.status === 'requires_capture'
+        ? stripe.paymentIntents.capture(host_payment_intent_id)
+        : hostIntent,
+      partnerIntent.status === 'requires_capture'
+        ? stripe.paymentIntents.capture(partner_payment_intent_id)
+        : partnerIntent,
     ]);
 
     if (hostCapture.status !== 'succeeded' || partnerCapture.status !== 'succeeded') {
@@ -67,7 +91,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // 3. CALCULATE VIRTUAL CARD SPENDING LIMIT
+    // 4. CALCULATE VIRTUAL CARD SPENDING LIMIT
     const itemPriceCents = Math.round((Number(item_price) || 0) * 100);
     const isBogo50 = deal_type === 'BOGO_50' || deal_type === 'BUY_1_GET_1_50_OFF';
 
@@ -76,7 +100,7 @@ export async function POST(req: Request) {
 
     const shortLobbyId = String(lobbyId).replace(/[^a-zA-Z0-9]/g, '').substring(0, 8);
 
-    // 4. CREATE STRIPE ISSUING CARD WITH DEV FALLBACK
+    // 5. CREATE STRIPE ISSUING CARD WITH DEV FALLBACK
     let virtualCard: { id: string; last4: string; expMonth: number; expYear: number };
 
     try {
@@ -131,7 +155,7 @@ export async function POST(req: Request) {
       };
     }
 
-    // 5. UPDATE DATABASE WITH MATCH STATUS & VIRTUAL CARD REF
+    // 6. UPDATE DATABASE WITH MATCH STATUS & VIRTUAL CARD REF
     const { error: updateErr } = await supabase
       .from('lobbies')
       .update({
@@ -145,7 +169,7 @@ export async function POST(req: Request) {
       console.error('Failed to update lobby with issuing card metadata:', updateErr);
     }
 
-    // 6. RETURN SUCCESSFUL MATCH DATA IMMEDIATELY TO FRONTEND
+    // 7. RETURN SUCCESSFUL MATCH DATA TO FRONTEND
     return NextResponse.json(
       {
         success: true,
@@ -169,5 +193,3 @@ export async function POST(req: Request) {
     );
   }
 }
-
-
