@@ -26,7 +26,7 @@ export async function OPTIONS() {
 
 export async function POST(req: Request) {
   try {
-    const { lobbyId, role, userState } = await req.json();
+    const { lobbyId, role, userState, paymentIntentId } = await req.json();
 
     if (!lobbyId || !role) {
       return NextResponse.json(
@@ -74,22 +74,41 @@ export async function POST(req: Request) {
     const isHost = role === 'HOST';
     const shortLobbyId = String(lobbyId).replace(/[^a-zA-Z0-9]/g, '').substring(0, 8);
 
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: validAmountCents,
-      currency: 'usd',
-      capture_method: 'manual',
-      description: `BOGO Hold #${shortLobbyId}`,
-      statement_descriptor_suffix: `BOGO ${shortLobbyId}`,
-      metadata: {
-        lobbyId,
-        role,
-        dealType,
-        userState: selectedState,
-        taxAmount: calculatedTax.toString(),
-        platformFee: platformFee.toString(),
-        participantRole: isHost ? 'Host' : 'Partner',
-      },
-    });
+    let paymentIntent;
+
+    // REUSE & UPDATE: If a paymentIntentId is provided, update the existing draft intent in Stripe
+    if (paymentIntentId) {
+      paymentIntent = await stripe.paymentIntents.update(paymentIntentId, {
+        amount: validAmountCents,
+        metadata: {
+          lobbyId,
+          role,
+          dealType,
+          userState: selectedState,
+          taxAmount: calculatedTax.toString(),
+          platformFee: platformFee.toString(),
+          participantRole: isHost ? 'Host' : 'Partner',
+        },
+      });
+    } else {
+      // CREATE NEW: Only executed on initial page/form mount
+      paymentIntent = await stripe.paymentIntents.create({
+        amount: validAmountCents,
+        currency: 'usd',
+        capture_method: 'manual',
+        description: `BOGO Hold #${shortLobbyId}`,
+        statement_descriptor_suffix: `BOGO ${shortLobbyId}`,
+        metadata: {
+          lobbyId,
+          role,
+          dealType,
+          userState: selectedState,
+          taxAmount: calculatedTax.toString(),
+          platformFee: platformFee.toString(),
+          participantRole: isHost ? 'Host' : 'Partner',
+        },
+      });
+    }
 
     return NextResponse.json(
       {
