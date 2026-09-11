@@ -8,7 +8,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
-// UNIFIED COMBINED STATE + LOCAL TAX RATES
 const STATE_TAX_RATES: Record<string, number> = {
   AK: 0.0181, AL: 0.0924, AR: 0.0944, AZ: 0.0837, CA: 0.0885, CO: 0.0778, CT: 0.0635,
   DC: 0.0600, DE: 0.0000, FL: 0.0700, GA: 0.0738, HI: 0.0444, IA: 0.0694, ID: 0.0603,
@@ -52,22 +51,15 @@ export async function POST(req: Request) {
     const dealType = (lobby.deal_type || 'BOGO').toUpperCase();
     const isBogo50 = dealType === 'BOGO_50' || dealType === 'BUY_1_GET_1_50_OFF';
 
-    // 1. Base Split Share
     const bogoPromoTotal = isBogo50 ? itemPrice * 1.5 : itemPrice;
-    const splitBase = bogoPromoTotal / 2; // e.g. $60.00 for a $120 item
+    const splitBase = bogoPromoTotal / 2;
 
-    // 2. Platform Fee (2.5% of Split Base = $1.50)
     const platformFee = Math.round(splitBase * 0.025 * 100) / 100;
-
-    // 3. Dynamic State Tax (Reads selected state or defaults to NY 8.53%)
     const selectedState = (userState || 'NY').toUpperCase();
     const taxRate = STATE_TAX_RATES[selectedState] ?? 0.0853;
     const calculatedTax = Math.round(splitBase * taxRate * 100) / 100;
-
-    // 4. Stripe Fee (2.9% + $0.30)
     const stripeFee = Math.round((splitBase * 0.029 + 0.30) * 100) / 100;
 
-    // 5. Total Hold Amount in Cents
     const totalAmount = splitBase + platformFee + calculatedTax + stripeFee;
     const validAmountCents = Math.max(50, Math.round(totalAmount * 100));
 
@@ -76,7 +68,7 @@ export async function POST(req: Request) {
 
     let paymentIntent;
 
-    // REUSE & UPDATE: If a paymentIntentId is provided, update the existing draft intent in Stripe
+    // UPDATE existing intent if paymentIntentId is provided
     if (paymentIntentId) {
       paymentIntent = await stripe.paymentIntents.update(paymentIntentId, {
         amount: validAmountCents,
@@ -91,7 +83,7 @@ export async function POST(req: Request) {
         },
       });
     } else {
-      // CREATE NEW: Only executed on initial page/form mount
+      // CREATE new intent on first mount
       paymentIntent = await stripe.paymentIntents.create({
         amount: validAmountCents,
         currency: 'usd',
@@ -125,4 +117,3 @@ export async function POST(req: Request) {
     );
   }
 }
-

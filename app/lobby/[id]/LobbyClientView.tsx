@@ -48,6 +48,7 @@ const CheckoutForm = memo(function CheckoutForm({
   role,
   basePrice,
   formData,
+  isUpdating,
   onFormChange,
   onSuccess,
   onSubmittingStateChange,
@@ -56,6 +57,7 @@ const CheckoutForm = memo(function CheckoutForm({
   role: 'HOST' | 'PARTNER';
   basePrice: number;
   formData: AddressData;
+  isUpdating: boolean;
   onFormChange: (field: keyof AddressData, value: string) => void;
   onSuccess: () => void;
   onSubmittingStateChange: (isSubmitting: boolean) => void;
@@ -148,7 +150,7 @@ const CheckoutForm = memo(function CheckoutForm({
       }
     } catch (err: any) {
       setErrorMessage(err.message || 'An unexpected client-side error occurred');
-    } finally {
+    } font-bold {
       setLoading(false);
       onSubmittingStateChange(false);
     }
@@ -233,7 +235,12 @@ const CheckoutForm = memo(function CheckoutForm({
         </div>
       </div>
 
-      <div className="bg-neutral-900/80 p-3.5 rounded-xl border border-neutral-800/80 text-xs space-y-2">
+      <div className="bg-neutral-900/80 p-3.5 rounded-xl border border-neutral-800/80 text-xs space-y-2 relative">
+        {isUpdating && (
+          <div className="absolute inset-0 bg-neutral-950/70 backdrop-blur-[1px] rounded-xl flex items-center justify-center text-xs font-semibold text-emerald-400 z-10 animate-pulse">
+            Updating Tax Hold...
+          </div>
+        )}
         <div className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 border-b border-neutral-800 pb-1.5">
           Hold Breakdown
         </div>
@@ -274,7 +281,7 @@ const CheckoutForm = memo(function CheckoutForm({
 
       <button
         type="submit"
-        disabled={!stripe || loading}
+        disabled={!stripe || loading || isUpdating}
         className="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-extrabold rounded-xl shadow-lg transition duration-200 text-base cursor-pointer transform active:scale-95 disabled:opacity-50"
       >
         {loading ? 'Securing Hold...' : `Authorize $${totalAmountCharged.toFixed(2)} Hold`}
@@ -289,6 +296,7 @@ const StripeCheckoutWrapper = memo(function StripeCheckoutWrapper({
   basePrice,
   clientSecret,
   formData,
+  isUpdating,
   onFormChange,
   onSuccess,
   onSubmittingStateChange,
@@ -298,6 +306,7 @@ const StripeCheckoutWrapper = memo(function StripeCheckoutWrapper({
   basePrice: number;
   clientSecret: string;
   formData: AddressData;
+  isUpdating: boolean;
   onFormChange: (field: keyof AddressData, value: string) => void;
   onSuccess: () => Promise<void>;
   onSubmittingStateChange: (isSubmitting: boolean) => void;
@@ -309,6 +318,7 @@ const StripeCheckoutWrapper = memo(function StripeCheckoutWrapper({
         role={role}
         basePrice={basePrice}
         formData={formData}
+        isUpdating={isUpdating}
         onFormChange={onFormChange}
         onSuccess={onSuccess}
         onSubmittingStateChange={onSubmittingStateChange}
@@ -321,8 +331,11 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const [lobby, setLobby] = useState<LobbyData | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [role, setRole] = useState<'HOST' | 'PARTNER'>('PARTNER');
- 
-  // Lift shipping form inputs to parent component state so re-fetching PaymentIntent never clears them
+  const [isUpdatingIntent, setIsUpdatingIntent] = useState<boolean>(false);
+
+  // Store active paymentIntentId so state dropdown changes UPDATE instead of CREATE
+  const intentIdRef = useRef<string | null>(null);
+
   const [formData, setFormData] = useState<AddressData>({
     name: '',
     street1: '',
@@ -350,17 +363,30 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
-  const createPaymentIntent = async (currentRole: 'HOST' | 'PARTNER', state: string) => {
-    const res = await fetch('/api/create-payment-intent', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lobbyId, role: currentRole, userState: state }),
-    });
-    const intentData = await res.json();
-    if (intentData.clientSecret) {
-      setClientSecret(intentData.clientSecret);
-    } else if (intentData.error) {
-      setFetchError(`Payment Intent Error: ${intentData.error}`);
+  const createOrUpdatePaymentIntent = async (currentRole: 'HOST' | 'PARTNER', state: string) => {
+    setIsUpdatingIntent(true);
+    try {
+      const res = await fetch('/api/create-payment-intent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lobbyId,
+          role: currentRole,
+          userState: state,
+          paymentIntentId: intentIdRef.current, // Pass current intent ID to update in-place
+        }),
+      });
+      const intentData = await res.json();
+      if (intentData.clientSecret) {
+        setClientSecret(intentData.clientSecret);
+        if (intentData.paymentIntentId) {
+          intentIdRef.current = intentData.paymentIntentId;
+        }
+      } else if (intentData.error) {
+        setFetchError(`Payment Intent Error: ${intentData.error}`);
+      }
+    } finally {
+      setIsUpdatingIntent(false);
     }
   };
 
@@ -383,18 +409,17 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     const hasUserPaid =
       currentRole === 'HOST' ? !!data.host_payment_intent_id : !!data.partner_payment_intent_id;
 
-    if (!hasUserPaid && data.status !== 'MATCHED') {
-      await createPaymentIntent(currentRole, formData.state);
+    if (!hasUserPaid && data.status !== 'MATCHED' && !clientSecret) {
+      await createOrUpdatePaymentIntent(currentRole, formData.state);
     }
     setLoading(false);
   };
 
-  const handleFormFieldChange = async (field: keyof AddressData, value: string) => {
+  const handleFormFieldChange = (field: keyof AddressData, value: string) => {
     setFormData((prev) => {
       const updated = { ...prev, [field]: value };
       if (field === 'state' && value !== prev.state && lobby && role) {
-        setClientSecret(null);
-        createPaymentIntent(role, value);
+        createOrUpdatePaymentIntent(role, value);
       }
       return updated;
     });
@@ -426,6 +451,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
 
   const handlePaymentSuccess = async () => {
     setClientSecret(null);
+    intentIdRef.current = null;
     await fetchLobbyState();
   };
 
@@ -590,6 +616,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
             basePrice={lobby.item_price}
             clientSecret={clientSecret}
             formData={formData}
+            isUpdating={isUpdatingIntent}
             onFormChange={handleFormFieldChange}
             onSuccess={handlePaymentSuccess}
             onSubmittingStateChange={(submitting) => {
@@ -615,4 +642,3 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     </div>
   );
 }
-
