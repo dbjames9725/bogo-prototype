@@ -49,7 +49,8 @@ export default function HomePage() {
   const [isCreatingLobby, setIsCreatingLobby] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
 
-  const [avatarStage, setAvatarStage] = useState<'idle' | 'walking' | 'pointing'>('idle');
+  // WALKING ANIMATION STATE: 'idle' | 'walking' | 'arrived'
+  const [avatarStage, setAvatarStage] = useState<'idle' | 'walking' | 'arrived'>('idle');
 
   const itemPrice = Math.max(0.01, activePrice);
   const isBogo50 = dealType === 'BOGO_50';
@@ -63,16 +64,14 @@ export default function HomePage() {
 
   const totalAmountDue = yourSplitShare + platformFee + estimatedTax + stripeFee;
 
-  const handleAvatarSelect = (av: typeof AVATAR_ROSTER[0]) => {
-    setSelectedAvatar(av);
-    triggerWalkAndPoint();
-  };
-
-  const triggerWalkAndPoint = () => {
+  const triggerWalkSequence = (av?: typeof AVATAR_ROSTER[0]) => {
+    if (av) setSelectedAvatar(av);
     setAvatarStage('walking');
+   
+    // Character walks down over 1.2 seconds, then lands and points
     setTimeout(() => {
-      setAvatarStage('pointing');
-    }, 600);
+      setAvatarStage('arrived');
+    }, 1200);
   };
 
   const handleLockInSplit = async () => {
@@ -114,6 +113,34 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen bg-black text-white py-8 px-4 font-sans antialiased flex flex-col items-center justify-center">
+     
+      {/* INLINE CSS FOR KEYFRAME WALKING ANIMATIONS */}
+      <style jsx global>{`
+        @keyframes walkDown {
+          0% {
+            transform: translateY(-240px) scale(1) rotate(0deg);
+            opacity: 0.8;
+          }
+          25% {
+            transform: translateY(-180px) scale(1.1) rotate(-8deg);
+          }
+          50% {
+            transform: translateY(-120px) scale(1) rotate(8deg);
+          }
+          75% {
+            transform: translateY(-60px) scale(1.1) rotate(-8deg);
+          }
+          100% {
+            transform: translateY(0px) scale(1) rotate(0deg);
+            opacity: 1;
+          }
+        }
+
+        .animate-walk-down {
+          animation: walkDown 1.2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+        }
+      `}</style>
+
       <div className="max-w-xl w-full mx-auto space-y-6 relative">
 
         {/* GAMIFIED HEADER */}
@@ -165,7 +192,7 @@ export default function HomePage() {
                 value={activePrice || ''}
                 onChange={(e) => {
                   setActivePrice(parseFloat(e.target.value) || 0);
-                  if (avatarStage === 'idle') triggerWalkAndPoint();
+                  if (avatarStage === 'idle') triggerWalkSequence();
                 }}
                 placeholder="120.00"
                 className="w-full pl-8 p-3 text-lg font-mono font-black bg-neutral-900 border border-neutral-800 rounded-xl text-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400"
@@ -180,7 +207,7 @@ export default function HomePage() {
                   type="button"
                   onClick={() => {
                     setActivePrice(price);
-                    triggerWalkAndPoint();
+                    triggerWalkSequence();
                   }}
                   className={`px-3 py-1.5 rounded-lg border text-xs font-extrabold transition cursor-pointer ${
                     activePrice === price
@@ -239,7 +266,7 @@ export default function HomePage() {
                 <button
                   key={av.id}
                   type="button"
-                  onClick={() => handleAvatarSelect(av)}
+                  onClick={() => triggerWalkSequence(av)}
                   className={`p-2.5 rounded-xl border text-center transition cursor-pointer ${
                     selectedAvatar.id === av.id
                       ? 'border-amber-400 bg-amber-500/20 text-white scale-105 shadow-lg shadow-amber-500/10'
@@ -338,13 +365,24 @@ export default function HomePage() {
             </div>
           )}
 
-          {/* ANIMATED GUIDING AVATAR WITH CUSTOM MESSAGE */}
+          {/* PHYSICAL WALKING AVATAR AND CALLOUT BUBBLE */}
           {avatarStage !== 'idle' && (
-            <div className="flex items-center justify-center gap-2 pt-2 transition-all duration-500 animate-bounce">
-              <div className="bg-amber-400 text-black text-[11px] font-black px-3.5 py-2 rounded-xl shadow-lg border border-amber-300 flex items-center gap-1.5">
-                <span className="text-sm">{selectedAvatar.icon}</span>
-                <span>Click here when ready to save some money!</span>
-                <span className="text-base">👇</span>
+            <div className="flex flex-col items-center justify-center pt-2">
+              <div
+                className={`flex flex-col items-center justify-center ${
+                  avatarStage === 'walking' ? 'animate-walk-down' : 'animate-bounce'
+                }`}
+              >
+                {/* LARGE WALKING AVATAR SPRITE */}
+                <div className="text-4xl mb-1 filter drop-shadow-[0_10px_10px_rgba(245,158,11,0.5)]">
+                  {selectedAvatar.icon}
+                </div>
+
+                {/* CALLOUT BUBBLE POINTING TO BUTTON */}
+                <div className="bg-amber-400 text-black text-[11px] font-black px-3.5 py-2 rounded-xl shadow-xl border border-amber-300 flex items-center gap-1.5">
+                  <span>Click here when ready to save some money!</span>
+                  <span className="text-base">👇</span>
+                </div>
               </div>
             </div>
           )}
@@ -363,3 +401,4 @@ export default function HomePage() {
     </main>
   );
 }
+
