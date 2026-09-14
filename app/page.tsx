@@ -23,6 +23,20 @@ const STATE_TAX_RATES: Record<string, { name: string; rate: number }> = {
   WV: { name: 'West Virginia', rate: 0.0657 }, WI: { name: 'Wisconsin', rate: 0.0543 }, WY: { name: 'Wyoming', rate: 0.0536 },
 };
 
+// DIVERSE 8-CHARACTER AVATAR ROSTER
+const AVATAR_ROSTER = [
+  { id: 'ninja', name: 'Deal Ninja', role: 'Female', icon: '🥷', quote: 'Slashing prices in silence' },
+  { id: 'ranger', name: 'Loot Ranger', role: 'Female', icon: '🧝‍♀️', quote: 'Sniping 50% deals from afar' },
+  { id: 'elder_f', name: 'Bargain Matriarch', role: 'Senior Female', icon: '👵', quote: 'Never pays full price' },
+  { id: 'knight', name: 'Savings Knight', role: 'Male', icon: '⚔️', quote: 'Shielding your wallet' },
+  { id: 'wizard', name: 'Discount Wizard', role: 'Male', icon: '🧙‍♂️', quote: 'Casting price cuts' },
+  { id: 'elder_m', name: 'Coupon Elder', role: 'Senior Male', icon: '👴', quote: 'Back in my day, BOGO was free!' },
+  { id: 'teen_skate', name: 'Skate Splitter', role: 'Teenager', icon: '🛹', quote: 'Flexing half-price drops' },
+  { id: 'teen_gamer', name: 'Arcade Gamer', role: 'Teenager', icon: '🎮', quote: 'Chasing max loot high scores' },
+];
+
+const PRESET_PRICES = [25, 50, 100, 150, 200, 500];
+
 export default function HomePage() {
   const router = useRouter();
 
@@ -31,6 +45,7 @@ export default function HomePage() {
   const [dealType, setDealType] = useState<'BOGO_FREE' | 'BOGO_50'>('BOGO_FREE');
   const [selectedState, setSelectedState] = useState<string>('NY');
   const [includeTax, setIncludeTax] = useState<boolean>(true);
+  const [selectedAvatar, setSelectedAvatar] = useState(AVATAR_ROSTER[0]);
 
   const [isCreatingLobby, setIsCreatingLobby] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
@@ -45,11 +60,12 @@ export default function HomePage() {
 
   const stateInfo = STATE_TAX_RATES[selectedState] || { name: 'Default', rate: 0.0853 };
   const estimatedTax = includeTax ? Math.round(yourSplitShare * stateInfo.rate * 100) / 100 : 0;
- 
+
   // Standard Stripe Fee Formula: 2.9% + $0.30
   const stripeFee = Math.round((yourSplitShare * 0.029 + 0.30) * 100) / 100;
- 
+
   const totalAmountDue = yourSplitShare + platformFee + estimatedTax + stripeFee;
+  const totalLootSaved = (itemPrice * (isBogo50 ? 2 : 2)) - (yourSplitShare * 2);
 
   const handleLockInSplit = async () => {
     setIsCreatingLobby(true);
@@ -65,6 +81,7 @@ export default function HomePage() {
           dealType,
           userState: selectedState,
           includeTax,
+          hostAvatar: selectedAvatar.id,
         }),
       });
 
@@ -76,6 +93,7 @@ export default function HomePage() {
 
       if (typeof window !== 'undefined') {
         localStorage.setItem(`hosted_${data.lobbyId}`, 'true');
+        localStorage.setItem(`avatar_${data.lobbyId}`, selectedAvatar.id);
       }
 
       router.push(`/lobby/${data.lobbyId}`);
@@ -87,131 +105,170 @@ export default function HomePage() {
   };
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-white py-12 px-4 font-sans antialiased">
-      <div className="max-w-xl mx-auto space-y-8">
-       
+    <main className="min-h-screen bg-black text-white py-8 px-4 font-sans antialiased flex flex-col items-center justify-center">
+      <div className="max-w-xl w-full mx-auto space-y-6">
+
+        {/* GAMIFIED HEADER */}
         <div className="text-center space-y-2">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-semibold">
-            <span>BOGO Split Engine</span>
+          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-black text-xs font-black uppercase tracking-widest shadow-md shadow-amber-500/10">
+            <span>⚔️ CO-OP BOGO SIMULATOR</span>
           </div>
-          <h1 className="text-3xl font-black tracking-tight text-white sm:text-4xl">
-            Split Any Deal 50/50
+          <h1 className="text-3xl font-black tracking-tight text-white sm:text-4xl uppercase">
+            SPLIT ANY DEAL 50/50
           </h1>
-          <p className="text-sm text-neutral-400">
-            Calculate exact split shares, fees, and state taxes in real time.
+          <p className="text-xs text-neutral-400">
+            Calculate exact split shares, state taxes, and summon Player 2 in real time.
           </p>
         </div>
 
-        <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-2xl space-y-6">
-          <div className="border-b border-neutral-800 pb-4">
-            <div className="flex items-center gap-2 text-xs font-extrabold uppercase text-blue-400 tracking-wider">
-              <span>Interactive Savings Simulator</span>
-            </div>
-            <p className="text-xs text-neutral-400 mt-1">
-              Adjust retail price & deal type to project your personal savings.
-            </p>
+        <div className="bg-neutral-950 border border-neutral-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
+
+          {/* ITEM NAME INPUT */}
+          <div className="space-y-2">
+            <label className="text-xs font-black uppercase text-amber-400 tracking-wider block">
+              Quest Target (Item Title)
+            </label>
+            <input
+              type="text"
+              placeholder="Enter product title..."
+              value={itemName}
+              onChange={(e) => setItemName(e.target.value)}
+              className="w-full p-3 bg-neutral-900 border border-neutral-800 rounded-xl text-sm font-semibold text-white placeholder-neutral-600 focus:outline-none focus:ring-2 focus:ring-amber-400"
+            />
           </div>
 
-          <div className="space-y-5">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-neutral-300 uppercase tracking-wider block">
-                Product Name / Item Description
+          {/* RETAIL PRICE DIRECT INPUT & QUICK POWER-UP CHIPS */}
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <label className="text-xs font-black uppercase text-amber-400 tracking-wider">
+                Retail Price ($USD)
               </label>
-              <input
-                type="text"
-                placeholder="Enter product title..."
-                value={itemName}
-                onChange={(e) => setItemName(e.target.value)}
-                className="w-full p-3 bg-neutral-950 border border-neutral-800 rounded-xl text-sm font-semibold text-white placeholder-neutral-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full">
-                  Save {isBogo50 ? '25%' : '50%'} Per Item
-                </span>
-                <div className="flex items-center gap-1">
-                  <span className="text-sm font-bold text-neutral-400">Item Retail Price $</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0.01"
-                    value={activePrice}
-                    onChange={(e) => setActivePrice(parseFloat(e.target.value) || 0)}
-                    className="w-28 p-1.5 text-right font-black text-lg bg-neutral-950 border border-neutral-800 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-              <input
-                type="range"
-                min="10"
-                max="500"
-                step="1"
-                value={activePrice <= 500 ? activePrice : 500}
-                onChange={(e) => setActivePrice(parseFloat(e.target.value) || 0)}
-                className="w-full accent-blue-500 cursor-pointer"
-              />
-              <div className="flex justify-between text-[11px] text-neutral-500 font-semibold">
-                <span>$10</span>
-                <span>$250</span>
-                <span>$500+</span>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-neutral-300 uppercase tracking-wider block">
-                Select Deal Mechanics
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setDealType('BOGO_FREE')}
-                  className={`py-3 px-3 rounded-xl text-xs font-extrabold border transition cursor-pointer ${
-                    dealType === 'BOGO_FREE'
-                      ? 'bg-blue-600 text-white border-blue-500 shadow-md'
-                      : 'bg-neutral-950 text-neutral-400 border-neutral-800 hover:bg-neutral-800'
-                  }`}
-                >
-                  Buy 1 Get 1 FREE
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDealType('BOGO_50')}
-                  className={`py-3 px-3 rounded-xl text-xs font-extrabold border transition cursor-pointer ${
-                    dealType === 'BOGO_50'
-                      ? 'bg-blue-600 text-white border-blue-500 shadow-md'
-                      : 'bg-neutral-950 text-neutral-400 border-neutral-800 hover:bg-neutral-800'
-                  }`}
-                >
-                  Buy 1 Get 1 50% OFF
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Fee & Price Breakdown Summary */}
-          <div className="bg-neutral-950 p-5 rounded-2xl border border-neutral-800 space-y-3 text-sm">
-            <div className="flex justify-between text-neutral-400">
-              <span>BOGO Promo Total (Pre-tax)</span>
-              <span className="font-semibold text-white">
-                ${bogoPromoTotal.toFixed(2)}
+              <span className="text-xs font-extrabold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full">
+                Save {isBogo50 ? '25%' : '50%'} Per Item
               </span>
             </div>
 
-            <div className="flex justify-between text-neutral-400 pt-2 border-t border-neutral-800">
+            <div className="relative">
+              <span className="absolute left-3.5 top-3 text-neutral-500 font-bold text-base">$</span>
+              <input
+                type="number"
+                step="0.01"
+                min="0.01"
+                value={activePrice || ''}
+                onChange={(e) => setActivePrice(parseFloat(e.target.value) || 0)}
+                placeholder="120.00"
+                className="w-full pl-8 p-3 text-lg font-mono font-black bg-neutral-900 border border-neutral-800 rounded-xl text-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400"
+              />
+            </div>
+
+            {/* QUICK POWER-UP CHIPS (REPLACES OLD SLIDER) */}
+            <div className="flex flex-wrap gap-2 pt-1">
+              {PRESET_PRICES.map((price) => (
+                <button
+                  key={price}
+                  type="button"
+                  onClick={() => setActivePrice(price)}
+                  className={`px-3 py-1.5 rounded-lg border text-xs font-extrabold transition cursor-pointer ${
+                    activePrice === price
+                      ? 'border-amber-400 bg-amber-400 text-black shadow-md shadow-amber-400/20'
+                      : 'border-neutral-800 bg-neutral-900 text-neutral-400 hover:border-neutral-700 hover:text-white'
+                  }`}
+                >
+                  ${price}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* DEAL MECHANICS SELECTOR */}
+          <div className="space-y-2">
+            <label className="text-xs font-black uppercase text-amber-400 tracking-wider block">
+              Select Deal Mechanics
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setDealType('BOGO_FREE')}
+                className={`py-3 px-3 rounded-xl text-xs font-black uppercase border transition cursor-pointer ${
+                  dealType === 'BOGO_FREE'
+                    ? 'bg-amber-400 text-black border-amber-400 shadow-md shadow-amber-400/10'
+                    : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:bg-neutral-800'
+                }`}
+              >
+                Buy 1 Get 1 FREE
+              </button>
+              <button
+                type="button"
+                onClick={() => setDealType('BOGO_50')}
+                className={`py-3 px-3 rounded-xl text-xs font-black uppercase border transition cursor-pointer ${
+                  dealType === 'BOGO_50'
+                    ? 'bg-amber-400 text-black border-amber-400 shadow-md shadow-amber-400/10'
+                    : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:bg-neutral-800'
+                }`}
+              >
+                Buy 1 Get 1 50% OFF
+              </button>
+            </div>
+          </div>
+
+          {/* AVATAR SELECTOR (PLAYER 1) */}
+          <div className="space-y-2">
+            <div className="flex justify-between items-center">
+              <label className="text-xs font-black uppercase text-amber-400 tracking-wider">
+                Select Your Hero (Player 1)
+              </label>
+              <span className="text-[10px] text-neutral-400 font-semibold">{selectedAvatar.role}</span>
+            </div>
+
+            <div className="grid grid-cols-4 gap-2">
+              {AVATAR_ROSTER.map((av) => (
+                <button
+                  key={av.id}
+                  type="button"
+                  onClick={() => setSelectedAvatar(av)}
+                  className={`p-2.5 rounded-xl border text-center transition cursor-pointer ${
+                    selectedAvatar.id === av.id
+                      ? 'border-amber-400 bg-amber-500/20 text-white scale-105 shadow-lg shadow-amber-500/10'
+                      : 'border-neutral-800 bg-neutral-900/60 text-neutral-400 hover:border-neutral-700'
+                  }`}
+                >
+                  <div className="text-2xl mb-1">{av.icon}</div>
+                  <div className="text-[10px] font-extrabold truncate">{av.name}</div>
+                </button>
+              ))}
+            </div>
+
+            <div className="bg-neutral-900/50 p-2.5 rounded-xl border border-neutral-800 text-center">
+              <span className="text-[11px] text-amber-300 font-semibold italic">
+                "{selectedAvatar.quote}"
+              </span>
+            </div>
+          </div>
+
+          {/* FEE & PRICE BREAKDOWN SUMMARY */}
+          <div className="bg-neutral-900 p-5 rounded-2xl border border-neutral-800 space-y-3 text-xs">
+            <div className="text-[10px] font-black uppercase tracking-wider text-amber-400 border-b border-neutral-800 pb-2">
+              Loot & XP Breakdown
+            </div>
+
+            <div className="flex justify-between text-neutral-400">
+              <span>BOGO Promo Total (Pre-tax)</span>
+              <span className="font-mono text-neutral-300">${bogoPromoTotal.toFixed(2)}</span>
+            </div>
+
+            <div className="flex justify-between text-neutral-300 pt-2 border-t border-neutral-800">
               <div>
-                <span className="block font-bold text-white">Your Split Share</span>
-                <span className="text-[11px] text-neutral-500">You pay only this amount (Pre-tax)</span>
+                <span className="block font-extrabold text-white">Your Player 1 Share</span>
+                <span className="text-[10px] text-neutral-500">Base split cost (Pre-tax)</span>
               </div>
-              <span className="font-black text-emerald-400 text-lg">
+              <span className="font-black text-emerald-400 text-base font-mono">
                 ${yourSplitShare.toFixed(2)}
               </span>
             </div>
 
-            <div className="flex justify-between text-xs text-neutral-400">
+            <div className="flex justify-between text-neutral-400">
               <span>Platform Fee (2.5% Retail Split)</span>
-              <span className="font-semibold text-neutral-300">+${platformFee.toFixed(2)}</span>
+              <span className="font-mono text-neutral-300">+${platformFee.toFixed(2)}</span>
             </div>
 
             <div className="pt-2 border-t border-neutral-800 space-y-2">
@@ -222,16 +279,17 @@ export default function HomePage() {
                     id="pageTaxToggleDark"
                     checked={includeTax}
                     onChange={(e) => setIncludeTax(e.target.checked)}
-                    className="w-4 h-4 text-blue-600 bg-neutral-900 border-neutral-700 rounded focus:ring-blue-500 cursor-pointer"
+                    className="w-4 h-4 text-amber-500 bg-neutral-950 border-neutral-700 rounded focus:ring-amber-400 cursor-pointer"
                   />
                   <label htmlFor="pageTaxToggleDark" className="text-xs font-bold text-neutral-300 cursor-pointer">
                     Add State Sales Tax
                   </label>
                 </div>
+
                 <select
                   value={selectedState}
                   onChange={(e) => setSelectedState(e.target.value)}
-                  className="text-xs bg-neutral-900 border border-neutral-800 rounded px-2 py-1 font-bold text-white focus:outline-none"
+                  className="text-xs bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-1 font-bold text-white focus:outline-none focus:ring-1 focus:ring-amber-400"
                 >
                   {Object.keys(STATE_TAX_RATES).sort().map((st) => (
                     <option key={st} value={st}>
@@ -242,37 +300,38 @@ export default function HomePage() {
               </div>
 
               {includeTax && (
-                <div className="flex justify-between text-xs text-neutral-400">
+                <div className="flex justify-between text-neutral-400">
                   <span>Estimated Sales Tax ({selectedState})</span>
-                  <span className="font-semibold text-neutral-300">+${estimatedTax.toFixed(2)}</span>
+                  <span className="font-mono text-neutral-300">+${estimatedTax.toFixed(2)}</span>
                 </div>
               )}
 
-              <div className="flex justify-between text-xs text-neutral-400">
+              <div className="flex justify-between text-neutral-400">
                 <span>Stripe Processing Fee</span>
-                <span className="font-semibold text-neutral-300">+${stripeFee.toFixed(2)}</span>
+                <span className="font-mono text-neutral-300">+${stripeFee.toFixed(2)}</span>
               </div>
+            </div>
 
-              <div className="flex justify-between text-sm font-black text-emerald-400 pt-2 border-t border-neutral-800">
-                <span>Total Amount Due</span>
-                <span className="font-mono">${totalAmountDue.toFixed(2)}</span>
-              </div>
+            <div className="flex justify-between text-emerald-400 font-bold border-t border-neutral-800 pt-3 text-sm">
+              <span>Est. Total Authorized Hold:</span>
+              <span className="font-mono text-base">${totalAmountDue.toFixed(2)}</span>
             </div>
           </div>
 
           {errorMessage && (
-            <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs rounded-xl font-bold text-center">
+            <div className="p-4 bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs rounded-xl font-semibold">
               {errorMessage}
             </div>
           )}
 
+          {/* SUBMIT BUTTON */}
           <button
             type="button"
             onClick={handleLockInSplit}
-            disabled={isCreatingLobby}
-            className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-extrabold rounded-xl shadow-lg transition text-base cursor-pointer transform active:scale-95 disabled:opacity-50"
+            disabled={isCreatingLobby || itemPrice <= 0}
+            className="w-full py-4 bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:brightness-110 text-black font-black uppercase tracking-wider rounded-xl shadow-lg shadow-amber-500/10 transition duration-200 text-base cursor-pointer transform active:scale-95 disabled:opacity-50"
           >
-            {isCreatingLobby ? 'Creating BOGO Lobby...' : 'Lock In Split & Get Share Link'}
+            {isCreatingLobby ? 'INITIALIZING MATCH...' : '🎮 LAUNCH CO-OP LOBBY'}
           </button>
         </div>
       </div>
