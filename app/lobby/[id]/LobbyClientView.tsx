@@ -381,7 +381,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
 
   const intentIdRef = useRef<string | null>(null);
 
-  // EMPTY INITIAL ZIP CODE TO ALLOW PLAYER 2 TO ENTER THEIR ZIP FOR SHIPPING
+  // EMPTY ZIP CODE FOR MANUAL ENTRY
   const [formData, setFormData] = useState<AddressData>({
     name: '',
     street1: '',
@@ -520,15 +520,12 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     await fetchLobbyState();
   };
 
-  // FIXED: ABSOLUTE URL RESOLUTION FOR RELIABLE PITY PING COPYING
-  const handleCopyPityPing = () => {
+  // COPIES ONLY THE DIRECT URL SO PASTE WORKS AS A WEBPAGE LINK
+  const handleCopyLink = () => {
     if (typeof window !== 'undefined') {
-      const currentUrl = `${window.location.origin}${window.location.pathname}`;
-      const pityMessage = `My character is literally on their knees crying right now. Click this link to split this deal with me: ${currentUrl}`;
-     
-      navigator.clipboard.writeText(pityMessage);
+      navigator.clipboard.writeText(window.location.href);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
+      setTimeout(() => setCopied(false), 2000);
     }
   };
 
@@ -677,7 +674,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   return (
     <div className="min-h-screen bg-black text-white p-4 flex flex-col items-center justify-center">
      
-      {/* KEYFRAME ANIMATIONS FOR MERCY-STYLE BEGGING & KNEELING */}
+      {/* KEYFRAME ANIMATIONS */}
       <style jsx global>{`
         @keyframes walkDown {
           0% {
@@ -848,12 +845,12 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
             <p className="text-[11px] text-neutral-400 font-medium">{currentStage.subtext}</p>
 
             <button
-              onClick={handleCopyPityPing}
+              onClick={handleCopyLink}
               className="w-full py-3.5 bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:brightness-110 text-black font-black text-xs uppercase tracking-wider rounded-xl transition cursor-pointer shadow-lg shadow-amber-500/10 transform active:scale-95"
             >
               {copied
-                ? '✓ PITY PING & LINK COPIED TO CLIPBOARD!'
-                : '📢 SEND PITY PING TO FRIEND'}
+                ? '✓ LOBBY LINK COPIED TO CLIPBOARD!'
+                : '📢 COPY CO-OP LOBBY LINK'}
             </button>
           </div>
         )}
