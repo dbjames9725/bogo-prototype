@@ -23,7 +23,6 @@ const STATE_TAX_RATES: Record<string, { name: string; rate: number }> = {
   WV: { name: 'West Virginia', rate: 0.0657 }, WI: { name: 'Wisconsin', rate: 0.0543 }, WY: { name: 'Wyoming', rate: 0.0536 },
 };
 
-// DIVERSE 8-CHARACTER AVATAR ROSTER
 const AVATAR_ROSTER = [
   { id: 'ninja', name: 'Deal Ninja', role: 'Female', icon: '🥷', quote: 'Slashing prices in silence' },
   { id: 'ranger', name: 'Loot Ranger', role: 'Female', icon: '🧝‍♀️', quote: 'Sniping 50% deals from afar' },
@@ -50,22 +49,31 @@ export default function HomePage() {
   const [isCreatingLobby, setIsCreatingLobby] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
 
+  const [avatarStage, setAvatarStage] = useState<'idle' | 'walking' | 'pointing'>('idle');
+
   const itemPrice = Math.max(0.01, activePrice);
   const isBogo50 = dealType === 'BOGO_50';
   const bogoPromoTotal = isBogo50 ? itemPrice * 1.5 : itemPrice;
-  const yourSplitShare = bogoPromoTotal / 2; // e.g. $60.00
+  const yourSplitShare = bogoPromoTotal / 2;
 
-  // 2.5% Platform Fee Calculation ($1.50 for $60 share)
   const platformFee = Math.round(yourSplitShare * 0.025 * 100) / 100;
-
   const stateInfo = STATE_TAX_RATES[selectedState] || { name: 'Default', rate: 0.0853 };
   const estimatedTax = includeTax ? Math.round(yourSplitShare * stateInfo.rate * 100) / 100 : 0;
-
-  // Standard Stripe Fee Formula: 2.9% + $0.30
   const stripeFee = Math.round((yourSplitShare * 0.029 + 0.30) * 100) / 100;
 
   const totalAmountDue = yourSplitShare + platformFee + estimatedTax + stripeFee;
-  const totalLootSaved = (itemPrice * (isBogo50 ? 2 : 2)) - (yourSplitShare * 2);
+
+  const handleAvatarSelect = (av: typeof AVATAR_ROSTER[0]) => {
+    setSelectedAvatar(av);
+    triggerWalkAndPoint();
+  };
+
+  const triggerWalkAndPoint = () => {
+    setAvatarStage('walking');
+    setTimeout(() => {
+      setAvatarStage('pointing');
+    }, 600);
+  };
 
   const handleLockInSplit = async () => {
     setIsCreatingLobby(true);
@@ -106,7 +114,7 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen bg-black text-white py-8 px-4 font-sans antialiased flex flex-col items-center justify-center">
-      <div className="max-w-xl w-full mx-auto space-y-6">
+      <div className="max-w-xl w-full mx-auto space-y-6 relative">
 
         {/* GAMIFIED HEADER */}
         <div className="text-center space-y-2">
@@ -121,7 +129,7 @@ export default function HomePage() {
           </p>
         </div>
 
-        <div className="bg-neutral-950 border border-neutral-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
+        <div className="bg-neutral-950 border border-neutral-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 relative overflow-hidden">
 
           {/* ITEM NAME INPUT */}
           <div className="space-y-2">
@@ -155,19 +163,25 @@ export default function HomePage() {
                 step="0.01"
                 min="0.01"
                 value={activePrice || ''}
-                onChange={(e) => setActivePrice(parseFloat(e.target.value) || 0)}
+                onChange={(e) => {
+                  setActivePrice(parseFloat(e.target.value) || 0);
+                  if (avatarStage === 'idle') triggerWalkAndPoint();
+                }}
                 placeholder="120.00"
                 className="w-full pl-8 p-3 text-lg font-mono font-black bg-neutral-900 border border-neutral-800 rounded-xl text-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400"
               />
             </div>
 
-            {/* QUICK POWER-UP CHIPS (REPLACES OLD SLIDER) */}
+            {/* QUICK POWER-UP CHIPS */}
             <div className="flex flex-wrap gap-2 pt-1">
               {PRESET_PRICES.map((price) => (
                 <button
                   key={price}
                   type="button"
-                  onClick={() => setActivePrice(price)}
+                  onClick={() => {
+                    setActivePrice(price);
+                    triggerWalkAndPoint();
+                  }}
                   className={`px-3 py-1.5 rounded-lg border text-xs font-extrabold transition cursor-pointer ${
                     activePrice === price
                       ? 'border-amber-400 bg-amber-400 text-black shadow-md shadow-amber-400/20'
@@ -225,7 +239,7 @@ export default function HomePage() {
                 <button
                   key={av.id}
                   type="button"
-                  onClick={() => setSelectedAvatar(av)}
+                  onClick={() => handleAvatarSelect(av)}
                   className={`p-2.5 rounded-xl border text-center transition cursor-pointer ${
                     selectedAvatar.id === av.id
                       ? 'border-amber-400 bg-amber-500/20 text-white scale-105 shadow-lg shadow-amber-500/10'
@@ -324,7 +338,18 @@ export default function HomePage() {
             </div>
           )}
 
-          {/* SUBMIT BUTTON */}
+          {/* ANIMATED GUIDING AVATAR WITH CUSTOM MESSAGE */}
+          {avatarStage !== 'idle' && (
+            <div className="flex items-center justify-center gap-2 pt-2 transition-all duration-500 animate-bounce">
+              <div className="bg-amber-400 text-black text-[11px] font-black px-3.5 py-2 rounded-xl shadow-lg border border-amber-300 flex items-center gap-1.5">
+                <span className="text-sm">{selectedAvatar.icon}</span>
+                <span>Click here when ready to save some money!</span>
+                <span className="text-base">👇</span>
+              </div>
+            </div>
+          )}
+
+          {/* SUBMIT LAUNCH BUTTON */}
           <button
             type="button"
             onClick={handleLockInSplit}
