@@ -18,6 +18,18 @@ const STATE_TAX_RATES: Record<string, number> = {
   WV: 0.0657, WY: 0.0536,
 };
 
+// DIVERSE 8-CHARACTER AVATAR ROSTER
+const AVATAR_ROSTER = [
+  { id: 'ninja', name: 'Deal Ninja', role: 'Female', icon: '🥷', quote: 'Slashing prices in silence' },
+  { id: 'ranger', name: 'Loot Ranger', role: 'Female', icon: '🧝‍♀️', quote: 'Sniping 50% deals from afar' },
+  { id: 'elder_f', name: 'Bargain Matriarch', role: 'Senior Female', icon: '👵', quote: 'Never pays full price' },
+  { id: 'knight', name: 'Savings Knight', role: 'Male', icon: '⚔️', quote: 'Shielding your wallet' },
+  { id: 'wizard', name: 'Discount Wizard', role: 'Male', icon: '🧙‍♂️', quote: 'Casting price cuts' },
+  { id: 'elder_m', name: 'Coupon Elder', role: 'Senior Male', icon: '👴', quote: 'Back in my day, BOGO was free!' },
+  { id: 'teen_skate', name: 'Skate Splitter', role: 'Teenager', icon: '🛹', quote: 'Flexing half-price drops' },
+  { id: 'teen_gamer', name: 'Arcade Gamer', role: 'Teenager', icon: '🎮', quote: 'Chasing max loot high scores' },
+];
+
 export interface AddressData {
   name: string;
   street1: string;
@@ -41,6 +53,7 @@ export interface LobbyData {
   virtual_card_last4?: string;
   user_a_address?: AddressData;
   user_b_address?: AddressData;
+  host_avatar?: string;
 }
 
 const CheckoutForm = memo(function CheckoutForm({
@@ -332,6 +345,8 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [role, setRole] = useState<'HOST' | 'PARTNER'>('PARTNER');
   const [isUpdatingIntent, setIsUpdatingIntent] = useState<boolean>(false);
+  const [selectedAvatar, setSelectedAvatar] = useState(AVATAR_ROSTER[0]);
+  const [waitingSeconds, setWaitingSeconds] = useState(0);
 
   const intentIdRef = useRef<string | null>(null);
 
@@ -352,7 +367,10 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const isSubmittingRef = useRef<boolean>(false);
 
   useEffect(() => {
-    const timer = setInterval(() => setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0)), 1000);
+    const timer = setInterval(() => {
+      setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
+      setWaitingSeconds((prev) => prev + 1);
+    }, 1000);
     return () => clearInterval(timer);
   }, []);
 
@@ -577,13 +595,38 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const hasUserPaid =
     role === 'HOST' ? !!lobby.host_payment_intent_id : !!lobby.partner_payment_intent_id;
 
+  // EVOLVING WAITING ANIMATION STAGE
+  const getWaitingStage = () => {
+    if (waitingSeconds < 10) {
+      return {
+        text: 'Warming up & twiddling thumbs...',
+        badge: 'STATUS: WAITING',
+        bubble: "Ready when you are! Let's get Player 2 in here!",
+      };
+    } else if (waitingSeconds < 20) {
+      return {
+        text: 'Getting teary eyed... where is Player 2?',
+        badge: 'STATUS: SNIFFLING 💧',
+        bubble: "Is anyone joining? I really want this 50% discount...",
+      };
+    } else {
+      return {
+        text: 'Begging on knees for loot help!',
+        badge: 'STATUS: BEGGING 🙇',
+        bubble: "PLEASE JOIN! HELP ME SAVE SOME LOOT PLEASE!",
+      };
+    }
+  };
+
+  const currentStage = getWaitingStage();
+
   return (
     <div className="min-h-screen bg-black text-white p-4 flex flex-col items-center justify-center">
       <div className="max-w-xl w-full bg-neutral-950 border border-neutral-800 shadow-2xl rounded-3xl p-6 sm:p-8 space-y-6">
         <div className="flex justify-between items-center border-b border-neutral-800 pb-4">
           <div>
             <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
-              {role === 'HOST' ? 'Lobby Host' : 'Lobby Partner'}
+              {role === 'HOST' ? 'Lobby Host (Player 1)' : 'Lobby Partner (Player 2)'}
             </span>
             <h1 className="text-xl font-black text-white mt-2">{lobby.item_name}</h1>
           </div>
@@ -593,17 +636,79 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           </div>
         </div>
 
-        {role === 'HOST' && !lobby.partner_payment_intent_id && (
-          <div className="bg-neutral-900 border border-neutral-800 p-4 rounded-2xl flex items-center justify-between gap-3">
-            <div className="text-xs text-neutral-300">
-              <span className="font-bold text-white block mb-0.5">Invite a Partner</span>
-              Share this link to split the purchase 50/50.
+        {/* AVATAR SELECTOR BEFORE PAYING */}
+        {!hasUserPaid && (
+          <div className="bg-neutral-900/80 p-4 rounded-2xl border border-neutral-800 space-y-3">
+            <div className="flex justify-between items-center">
+              <label className="text-xs font-black uppercase text-amber-400 tracking-wider">
+                Choose Avatar ({role === 'HOST' ? 'Player 1' : 'Player 2'})
+              </label>
+              <span className="text-[10px] text-neutral-400 font-semibold">{selectedAvatar.role}</span>
             </div>
+            <div className="grid grid-cols-4 gap-2">
+              {AVATAR_ROSTER.map((av) => (
+                <button
+                  key={av.id}
+                  type="button"
+                  onClick={() => setSelectedAvatar(av)}
+                  className={`p-2.5 rounded-xl border text-center transition cursor-pointer ${
+                    selectedAvatar.id === av.id
+                      ? 'border-amber-400 bg-amber-500/20 text-white scale-105 shadow-lg shadow-amber-500/10'
+                      : 'border-neutral-800 bg-neutral-950/60 text-neutral-400 hover:border-neutral-700'
+                  }`}
+                >
+                  <div className="text-2xl mb-1">{av.icon}</div>
+                  <div className="text-[10px] font-extrabold truncate">{av.name}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* CO-OP MATCHMAKING BOARD */}
+        <div className="grid grid-cols-2 gap-3">
+          {/* PLAYER 1 SLOT */}
+          <div className="bg-neutral-900/90 border border-amber-500/30 p-4 rounded-2xl text-center space-y-2 relative">
+            <div className="text-[10px] font-black uppercase tracking-wider text-amber-400">Player 1 (Host)</div>
+            <div className="text-4xl my-1">{selectedAvatar.icon}</div>
+            <div className="text-xs font-bold text-white">{selectedAvatar.name}</div>
+            <div className="text-[10px] text-emerald-400 font-semibold">
+              {lobby.host_payment_intent_id ? '✓ READY TO SPLIT' : 'SELECTING HOLD'}
+            </div>
+          </div>
+
+          {/* PLAYER 2 SLOT */}
+          <div className="bg-neutral-900/90 border border-neutral-800 p-4 rounded-2xl text-center space-y-2">
+            <div className="text-[10px] font-black uppercase tracking-wider text-neutral-500">Player 2 (Partner)</div>
+            <div className="text-4xl my-1 opacity-60">🤝</div>
+            <div className="text-xs font-bold text-neutral-400">
+              {lobby.partner_payment_intent_id ? 'Partner Locked In' : 'Waiting for Partner...'}
+            </div>
+            <div className="text-[10px] text-amber-400 font-semibold animate-pulse">
+              {lobby.partner_payment_intent_id ? '✓ READY' : 'SEARCHING...'}
+            </div>
+          </div>
+        </div>
+
+        {/* EVOLVING WAITING ANIMATION & SPEECH BUBBLE */}
+        {role === 'HOST' && !lobby.partner_payment_intent_id && (
+          <div className="bg-neutral-900 border border-amber-500/30 p-5 rounded-2xl text-center space-y-3 relative overflow-hidden">
+            <span className="text-[9px] font-black uppercase tracking-widest text-black bg-amber-400 px-2.5 py-0.5 rounded-full">
+              {currentStage.badge}
+            </span>
+
+            {/* SPEECH BUBBLE */}
+            <div className="bg-amber-400/10 border border-amber-400/40 text-amber-200 text-xs font-extrabold p-3 rounded-xl max-w-xs mx-auto shadow-inner">
+              "{currentStage.bubble}"
+            </div>
+
+            <p className="text-xs text-neutral-300 font-medium">{currentStage.text}</p>
+
             <button
               onClick={handleCopyLink}
-              className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white font-bold text-xs rounded-xl transition cursor-pointer shrink-0"
+              className="w-full py-3 bg-neutral-800 hover:bg-neutral-700 text-white font-extrabold text-xs rounded-xl transition cursor-pointer shadow-md"
             >
-              {copied ? 'Copied!' : 'Copy Link'}
+              {copied ? 'LINK COPIED TO CLIPBOARD!' : '📢 COPY LINK TO INVITE PLAYER 2'}
             </button>
           </div>
         )}
