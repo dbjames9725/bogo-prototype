@@ -18,7 +18,6 @@ const STATE_TAX_RATES: Record<string, number> = {
   WV: 0.0657, WY: 0.0536,
 };
 
-// DIVERSE 8-CHARACTER AVATAR ROSTER
 const AVATAR_ROSTER = [
   { id: 'ninja', name: 'Deal Ninja', role: 'Female', icon: '🥷', quote: 'Slashing prices in silence' },
   { id: 'ranger', name: 'Loot Ranger', role: 'Female', icon: '🧝‍♀️', quote: 'Sniping 50% deals from afar' },
@@ -296,7 +295,6 @@ const CheckoutForm = memo(function CheckoutForm({
         </div>
       )}
 
-      {/* WALKING AVATAR CALLOUT BEFORE BUTTON */}
       {avatarStage !== 'idle' && (
         <div className="flex flex-col items-center justify-center pt-2">
           <div
@@ -381,13 +379,13 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
 
   const intentIdRef = useRef<string | null>(null);
 
-  // EMPTY ZIP CODE FOR MANUAL ENTRY
+  // ENSURED EMPTY INITIAL ZIP CODE FOR BOTH PLAYER 1 AND PLAYER 2
   const [formData, setFormData] = useState<AddressData>({
     name: '',
     street1: '',
     city: '',
     state: 'NY',
-    zip: '',
+    zip: '', // Explicitly empty for manual user entry
     phone: '',
   });
 
@@ -520,7 +518,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     await fetchLobbyState();
   };
 
-  // COPIES ONLY THE DIRECT URL SO PASTE WORKS AS A WEBPAGE LINK
   const handleCopyLink = () => {
     if (typeof window !== 'undefined') {
       navigator.clipboard.writeText(window.location.href);
