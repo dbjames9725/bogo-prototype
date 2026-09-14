@@ -18,7 +18,7 @@ const STATE_TAX_RATES: Record<string, number> = {
   WV: 0.0657, WY: 0.0536,
 };
 
-// DIVERSE 8-CHARACTER AVATAR ROSTER
+// DIVERSE 8-CHARACTER AVATAR ROSTER WITH FIXED EMOJI ICONS
 const AVATAR_ROSTER = [
   { id: 'ninja', name: 'Deal Ninja', role: 'Female', icon: '🥷', quote: 'Slashing prices in silence' },
   { id: 'ranger', name: 'Loot Ranger', role: 'Female', icon: '🧝‍♀️', quote: 'Sniping 50% deals from afar' },
@@ -62,6 +62,8 @@ const CheckoutForm = memo(function CheckoutForm({
   basePrice,
   formData,
   isUpdating,
+  avatarStage,
+  selectedAvatar,
   onFormChange,
   onSuccess,
   onSubmittingStateChange,
@@ -71,6 +73,8 @@ const CheckoutForm = memo(function CheckoutForm({
   basePrice: number;
   formData: AddressData;
   isUpdating: boolean;
+  avatarStage: 'idle' | 'walking' | 'arrived';
+  selectedAvatar: typeof AVATAR_ROSTER[0];
   onFormChange: (field: keyof AddressData, value: string) => void;
   onSuccess: () => void;
   onSubmittingStateChange: (isSubmitting: boolean) => void;
@@ -86,7 +90,7 @@ const CheckoutForm = memo(function CheckoutForm({
   const taxRate = STATE_TAX_RATES[formData.state] ?? 0.0853;
   const calculatedTax = Math.round(splitShare * taxRate * 100) / 100;
   const stripeFee = Math.round((splitShare * 0.029 + 0.30) * 100) / 100;
- 
+
   const totalAmountCharged = splitShare + calculatedTax + platformFee + stripeFee;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -292,12 +296,31 @@ const CheckoutForm = memo(function CheckoutForm({
         </div>
       )}
 
+      {/* WALKING AVATAR CALLOUT BEFORE BUTTON */}
+      {avatarStage !== 'idle' && (
+        <div className="flex flex-col items-center justify-center pt-2">
+          <div
+            className={`flex flex-col items-center justify-center ${
+              avatarStage === 'walking' ? 'animate-walk-down' : 'animate-bounce'
+            }`}
+          >
+            <div className="text-4xl mb-1 filter drop-shadow-[0_10px_10px_rgba(245,158,11,0.5)]">
+              {selectedAvatar.icon}
+            </div>
+            <div className="bg-amber-400 text-black text-[11px] font-black px-3.5 py-2 rounded-xl shadow-xl border border-amber-300 flex items-center gap-1.5">
+              <span>Click here when ready to save some money!</span>
+              <span className="text-base">👇</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       <button
         type="submit"
         disabled={!stripe || loading || isUpdating}
-        className="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-extrabold rounded-xl shadow-lg transition duration-200 text-base cursor-pointer transform active:scale-95 disabled:opacity-50"
+        className="w-full py-4 bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:brightness-110 text-black font-black uppercase tracking-wider rounded-xl shadow-lg transition duration-200 text-base cursor-pointer transform active:scale-95 disabled:opacity-50"
       >
-        {loading ? 'Securing Hold...' : `Authorize $${totalAmountCharged.toFixed(2)} Hold`}
+        {loading ? 'Securing Hold...' : `READY UP & LOCK IN $${totalAmountCharged.toFixed(2)}`}
       </button>
     </form>
   );
@@ -310,6 +333,8 @@ const StripeCheckoutWrapper = memo(function StripeCheckoutWrapper({
   clientSecret,
   formData,
   isUpdating,
+  avatarStage,
+  selectedAvatar,
   onFormChange,
   onSuccess,
   onSubmittingStateChange,
@@ -320,6 +345,8 @@ const StripeCheckoutWrapper = memo(function StripeCheckoutWrapper({
   clientSecret: string;
   formData: AddressData;
   isUpdating: boolean;
+  avatarStage: 'idle' | 'walking' | 'arrived';
+  selectedAvatar: typeof AVATAR_ROSTER[0];
   onFormChange: (field: keyof AddressData, value: string) => void;
   onSuccess: () => Promise<void>;
   onSubmittingStateChange: (isSubmitting: boolean) => void;
@@ -332,6 +359,8 @@ const StripeCheckoutWrapper = memo(function StripeCheckoutWrapper({
         basePrice={basePrice}
         formData={formData}
         isUpdating={isUpdating}
+        avatarStage={avatarStage}
+        selectedAvatar={selectedAvatar}
         onFormChange={onFormChange}
         onSuccess={onSuccess}
         onSubmittingStateChange={onSubmittingStateChange}
@@ -348,8 +377,11 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const [selectedAvatar, setSelectedAvatar] = useState(AVATAR_ROSTER[0]);
   const [waitingSeconds, setWaitingSeconds] = useState(0);
 
+  const [avatarStage, setAvatarStage] = useState<'idle' | 'walking' | 'arrived'>('idle');
+
   const intentIdRef = useRef<string | null>(null);
 
+  // EMPTY ZIP CODE TO ALLOW MANUAL SHIPPING ADDRESS ENTRY
   const [formData, setFormData] = useState<AddressData>({
     name: '',
     street1: '',
@@ -378,6 +410,14 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;
     return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
+  const triggerWalkSequence = (av: typeof AVATAR_ROSTER[0]) => {
+    setSelectedAvatar(av);
+    setAvatarStage('walking');
+    setTimeout(() => {
+      setAvatarStage('arrived');
+    }, 1200);
   };
 
   const createOrUpdatePaymentIntent = async (currentRole: 'HOST' | 'PARTNER', state: string) => {
@@ -422,6 +462,14 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     const isHost = isHostStored || !data.host_payment_intent_id;
     const currentRole = isHost ? 'HOST' : 'PARTNER';
     setRole(currentRole);
+
+    if (typeof window !== 'undefined') {
+      const savedAvatarId = localStorage.getItem(`avatar_${lobbyId}`);
+      if (savedAvatarId) {
+        const foundAv = AVATAR_ROSTER.find((a) => a.id === savedAvatarId);
+        if (foundAv) setSelectedAvatar(foundAv);
+      }
+    }
 
     const hasUserPaid =
       currentRole === 'HOST' ? !!data.host_payment_intent_id : !!data.partner_payment_intent_id;
@@ -472,11 +520,12 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     await fetchLobbyState();
   };
 
-  const handleCopyLink = () => {
+  const handleCopyPityPing = () => {
     if (typeof window !== 'undefined') {
-      navigator.clipboard.writeText(window.location.href);
+      const pityMessage = `My character is literally on their knees crying right now. Click this link to split this deal with me: ${window.location.href}`;
+      navigator.clipboard.writeText(pityMessage);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => setCopied(false), 2500);
     }
   };
 
@@ -595,25 +644,27 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const hasUserPaid =
     role === 'HOST' ? !!lobby.host_payment_intent_id : !!lobby.partner_payment_intent_id;
 
-  // EVOLVING WAITING ANIMATION STAGE
   const getWaitingStage = () => {
-    if (waitingSeconds < 10) {
+    if (waitingSeconds < 15) {
       return {
-        text: 'Warming up & twiddling thumbs...',
-        badge: 'STATUS: WAITING',
+        stage: 'warmup',
+        badge: 'STATUS: WAITING FOR PLAYER 2',
         bubble: "Ready when you are! Let's get Player 2 in here!",
+        subtext: "Thumb twiddling in progress...",
       };
-    } else if (waitingSeconds < 20) {
+    } else if (waitingSeconds < 30) {
       return {
-        text: 'Getting teary eyed... where is Player 2?',
-        badge: 'STATUS: SNIFFLING 💧',
-        bubble: "Is anyone joining? I really want this 50% discount...",
+        stage: 'sniffling',
+        badge: 'STATUS: GETTING TEARY EYED 💧',
+        bubble: "Is anyone coming? I really want this 50% discount...",
+        subtext: "Sniffling dramatically on knees...",
       };
     } else {
       return {
-        text: 'Begging on knees for loot help!',
-        badge: 'STATUS: BEGGING 🙇',
-        bubble: "PLEASE JOIN! HELP ME SAVE SOME LOOT PLEASE!",
+        stage: 'begging',
+        badge: 'STATUS: BEGGING ON KNEES 🙇',
+        bubble: "PLEASE JOIN THE MATCH! HELP ME SAVE THIS LOOT PLEASE!",
+        subtext: "Begging on knees holding a 'NEED PLAYER 2' sign!",
       };
     }
   };
@@ -622,6 +673,71 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
 
   return (
     <div className="min-h-screen bg-black text-white p-4 flex flex-col items-center justify-center">
+     
+      {/* KEYFRAME ANIMATIONS FOR MERCY-STYLE BEGGING & KNEELING */}
+      <style jsx global>{`
+        @keyframes walkDown {
+          0% {
+            transform: translateY(-240px) scale(1) rotate(0deg);
+            opacity: 0.8;
+          }
+          25% {
+            transform: translateY(-180px) scale(1.1) rotate(-8deg);
+          }
+          50% {
+            transform: translateY(-120px) scale(1) rotate(8deg);
+          }
+          75% {
+            transform: translateY(-60px) scale(1.1) rotate(-8deg);
+          }
+          100% {
+            transform: translateY(0px) scale(1) rotate(0deg);
+            opacity: 1;
+          }
+        }
+
+        @keyframes mercyKneelBeg {
+          0% {
+            transform: translateY(0px) scale(1) rotate(0deg);
+          }
+          25% {
+            transform: translateY(6px) scale(0.92) rotate(-6deg);
+          }
+          50% {
+            transform: translateY(12px) scale(0.88) rotate(0deg);
+          }
+          75% {
+            transform: translateY(6px) scale(0.92) rotate(6deg);
+          }
+          100% {
+            transform: translateY(0px) scale(1) rotate(0deg);
+          }
+        }
+
+        @keyframes tearFloat {
+          0% {
+            opacity: 1;
+            transform: translateY(0px) scale(1);
+          }
+          100% {
+            opacity: 0;
+            transform: translateY(20px) scale(1.4);
+          }
+        }
+
+        .animate-walk-down {
+          animation: walkDown 1.2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+        }
+
+        .animate-mercy-beg {
+          animation: mercyKneelBeg 0.8s ease-in-out infinite;
+        }
+
+        .animate-tear-drop {
+          animation: tearFloat 1s ease-out infinite;
+        }
+      `}</style>
+
       <div className="max-w-xl w-full bg-neutral-950 border border-neutral-800 shadow-2xl rounded-3xl p-6 sm:p-8 space-y-6">
         <div className="flex justify-between items-center border-b border-neutral-800 pb-4">
           <div>
@@ -650,7 +766,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
                 <button
                   key={av.id}
                   type="button"
-                  onClick={() => setSelectedAvatar(av)}
+                  onClick={() => triggerWalkSequence(av)}
                   className={`p-2.5 rounded-xl border text-center transition cursor-pointer ${
                     selectedAvatar.id === av.id
                       ? 'border-amber-400 bg-amber-500/20 text-white scale-105 shadow-lg shadow-amber-500/10'
@@ -670,8 +786,8 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           {/* PLAYER 1 SLOT */}
           <div className="bg-neutral-900/90 border border-amber-500/30 p-4 rounded-2xl text-center space-y-2 relative">
             <div className="text-[10px] font-black uppercase tracking-wider text-amber-400">Player 1 (Host)</div>
-            <div className="text-4xl my-1">{selectedAvatar.icon}</div>
-            <div className="text-xs font-bold text-white">{selectedAvatar.name}</div>
+            <div className="text-4xl my-1">{role === 'HOST' ? selectedAvatar.icon : '🥷'}</div>
+            <div className="text-xs font-bold text-white">{role === 'HOST' ? selectedAvatar.name : 'Host Player'}</div>
             <div className="text-[10px] text-emerald-400 font-semibold">
               {lobby.host_payment_intent_id ? '✓ READY TO SPLIT' : 'SELECTING HOLD'}
             </div>
@@ -680,9 +796,9 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           {/* PLAYER 2 SLOT */}
           <div className="bg-neutral-900/90 border border-neutral-800 p-4 rounded-2xl text-center space-y-2">
             <div className="text-[10px] font-black uppercase tracking-wider text-neutral-500">Player 2 (Partner)</div>
-            <div className="text-4xl my-1 opacity-60">🤝</div>
+            <div className="text-4xl my-1">{role === 'PARTNER' ? selectedAvatar.icon : '🤝'}</div>
             <div className="text-xs font-bold text-neutral-400">
-              {lobby.partner_payment_intent_id ? 'Partner Locked In' : 'Waiting for Partner...'}
+              {role === 'PARTNER' ? selectedAvatar.name : 'Waiting for Partner...'}
             </div>
             <div className="text-[10px] text-amber-400 font-semibold animate-pulse">
               {lobby.partner_payment_intent_id ? '✓ READY' : 'SEARCHING...'}
@@ -690,25 +806,51 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           </div>
         </div>
 
-        {/* EVOLVING WAITING ANIMATION & SPEECH BUBBLE */}
+        {/* DRAMATIC MERCY-STYLE BEGGING LOBBY ANIMATION */}
         {role === 'HOST' && !lobby.partner_payment_intent_id && (
-          <div className="bg-neutral-900 border border-amber-500/30 p-5 rounded-2xl text-center space-y-3 relative overflow-hidden">
-            <span className="text-[9px] font-black uppercase tracking-widest text-black bg-amber-400 px-2.5 py-0.5 rounded-full">
+          <div className="bg-gradient-to-b from-neutral-900 via-neutral-950 to-black border border-amber-500/40 p-6 rounded-2xl text-center space-y-4 relative overflow-hidden shadow-xl">
+            <span className="text-[9px] font-black uppercase tracking-widest text-black bg-amber-400 px-3 py-1 rounded-full shadow-md">
               {currentStage.badge}
             </span>
 
-            {/* SPEECH BUBBLE */}
-            <div className="bg-amber-400/10 border border-amber-400/40 text-amber-200 text-xs font-extrabold p-3 rounded-xl max-w-xs mx-auto shadow-inner">
+            <div className="relative py-2 flex flex-col items-center justify-center">
+              {currentStage.stage !== 'warmup' && (
+                <div className="absolute -top-1 flex gap-6 text-base animate-tear-drop">
+                  <span>💧</span>
+                  <span>💧</span>
+                </div>
+              )}
+
+              <div
+                className={`text-6xl filter drop-shadow-[0_10px_15px_rgba(245,158,11,0.4)] ${
+                  currentStage.stage === 'warmup'
+                    ? 'animate-pulse'
+                    : 'animate-mercy-beg'
+                }`}
+              >
+                {selectedAvatar.icon}
+              </div>
+
+              {currentStage.stage === 'begging' && (
+                <div className="mt-1 bg-amber-200 text-black text-[9px] font-black px-2 py-0.5 rounded border border-amber-400 rotate-[-2deg] shadow-md">
+                  🪧 NEED PLAYER 2 TO SAVE LOOT
+                </div>
+              )}
+            </div>
+
+            <div className="bg-neutral-900 border border-amber-400/50 text-amber-300 text-xs font-black p-3 rounded-2xl max-w-xs mx-auto shadow-inner relative">
               "{currentStage.bubble}"
             </div>
 
-            <p className="text-xs text-neutral-300 font-medium">{currentStage.text}</p>
+            <p className="text-[11px] text-neutral-400 font-medium">{currentStage.subtext}</p>
 
             <button
-              onClick={handleCopyLink}
-              className="w-full py-3 bg-neutral-800 hover:bg-neutral-700 text-white font-extrabold text-xs rounded-xl transition cursor-pointer shadow-md"
+              onClick={handleCopyPityPing}
+              className="w-full py-3.5 bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:brightness-110 text-black font-black text-xs uppercase tracking-wider rounded-xl transition cursor-pointer shadow-lg shadow-amber-500/10 transform active:scale-95"
             >
-              {copied ? 'LINK COPIED TO CLIPBOARD!' : '📢 COPY LINK TO INVITE PLAYER 2'}
+              {copied
+                ? '✓ PITY PING COPIED TO CLIPBOARD!'
+                : '📢 SEND PITY PING TO FRIEND'}
             </button>
           </div>
         )}
@@ -721,6 +863,8 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
             clientSecret={clientSecret}
             formData={formData}
             isUpdating={isUpdatingIntent}
+            avatarStage={avatarStage}
+            selectedAvatar={selectedAvatar}
             onFormChange={handleFormFieldChange}
             onSuccess={handlePaymentSuccess}
             onSubmittingStateChange={(submitting) => {
@@ -746,3 +890,4 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     </div>
   );
 }
+
