@@ -18,7 +18,7 @@ const STATE_TAX_RATES: Record<string, number> = {
   WV: 0.0657, WY: 0.0536,
 };
 
-// DIVERSE 8-CHARACTER AVATAR ROSTER WITH FIXED EMOJI ICONS
+// DIVERSE 8-CHARACTER AVATAR ROSTER
 const AVATAR_ROSTER = [
   { id: 'ninja', name: 'Deal Ninja', role: 'Female', icon: '🥷', quote: 'Slashing prices in silence' },
   { id: 'ranger', name: 'Loot Ranger', role: 'Female', icon: '🧝‍♀️', quote: 'Sniping 50% deals from afar' },
@@ -381,7 +381,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
 
   const intentIdRef = useRef<string | null>(null);
 
-  // EMPTY ZIP CODE TO ALLOW MANUAL SHIPPING ADDRESS ENTRY
+  // EMPTY INITIAL ZIP CODE TO ALLOW PLAYER 2 TO ENTER THEIR ZIP FOR SHIPPING
   const [formData, setFormData] = useState<AddressData>({
     name: '',
     street1: '',
@@ -520,9 +520,12 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     await fetchLobbyState();
   };
 
+  // FIXED: ABSOLUTE URL RESOLUTION FOR RELIABLE PITY PING COPYING
   const handleCopyPityPing = () => {
     if (typeof window !== 'undefined') {
-      const pityMessage = `My character is literally on their knees crying right now. Click this link to split this deal with me: ${window.location.href}`;
+      const currentUrl = `${window.location.origin}${window.location.pathname}`;
+      const pityMessage = `My character is literally on their knees crying right now. Click this link to split this deal with me: ${currentUrl}`;
+     
       navigator.clipboard.writeText(pityMessage);
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
@@ -849,7 +852,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
               className="w-full py-3.5 bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:brightness-110 text-black font-black text-xs uppercase tracking-wider rounded-xl transition cursor-pointer shadow-lg shadow-amber-500/10 transform active:scale-95"
             >
               {copied
-                ? '✓ PITY PING COPIED TO CLIPBOARD!'
+                ? '✓ PITY PING & LINK COPIED TO CLIPBOARD!'
                 : '📢 SEND PITY PING TO FRIEND'}
             </button>
           </div>
@@ -890,4 +893,3 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     </div>
   );
 }
-
