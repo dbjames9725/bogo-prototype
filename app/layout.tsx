@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
+import { Toaster } from 'sonner';
 import Header from '@/components/Header';
 import './globals.css';
 
@@ -23,6 +24,7 @@ export default function RootLayout({
         <footer className="bg-white border-t border-gray-200 py-4 text-center text-xs text-gray-500">
           © {new Date().getFullYear()} BOGO Split Prototype. All rights reserved.
         </footer>
+        <Toaster position="top-center" richColors theme="light" />
       </body>
     </html>
   );
