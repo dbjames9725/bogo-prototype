@@ -139,8 +139,8 @@ const CheckoutForm = memo(function CheckoutForm({
         };
 
         const updateData = isHost
-          ? { host_payment_intent_id: paymentIntent.id, user_a_address: addressData, host_avatar: selectedAvatar.id }
-          : { partner_payment_intent_id: paymentIntent.id, user_b_address: addressData, partner_avatar: selectedAvatar.id };
+          ? { host_payment_intent_id: paymentIntent.id, user_a_address: addressData }
+          : { partner_payment_intent_id: paymentIntent.id, user_b_address: addressData };
 
         const { error: dbErr } = await supabase.from('lobbies').update(updateData).eq('id', lobbyId);
 
@@ -510,3 +510,4 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     </div>
   );
 }
+
