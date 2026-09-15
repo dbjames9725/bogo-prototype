@@ -25,17 +25,17 @@ export async function POST(req: Request) {
 
   try {
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
-  } catch (err: any) {
-    console.error(`Webhook signature verification failed: ${err.message}`);
+  } catch (err: unknown) {
+    const errMessage = err instanceof Error ? err.message : 'Unknown signature error';
+    console.error(`Webhook signature verification failed: ${errMessage}`);
     return NextResponse.json(
-      { error: `Webhook Error: ${err.message}` },
+      { error: `Webhook Error: ${errMessage}` },
       { status: 400 }
     );
   }
 
   try {
     switch (event.type) {
-      // Triggered when a manual-capture PaymentIntent hold is successfully placed
       case 'payment_intent.amount_capturable_updated': {
         const paymentIntent = event.data.object as Stripe.PaymentIntent;
         const { lobbyId, role } = paymentIntent.metadata || {};
@@ -45,7 +45,6 @@ export async function POST(req: Request) {
           break;
         }
 
-        // 1. Assign Payment Intent ID to DB based on participant role
         const updateField =
           role?.toUpperCase() === 'HOST'
             ? { host_payment_intent_id: paymentIntent.id }
@@ -63,7 +62,6 @@ export async function POST(req: Request) {
           break;
         }
 
-        // 2. Check if BOTH holds are now present in DB & trigger match
         if (
           updatedLobby.status === 'PENDING' &&
           updatedLobby.host_payment_intent_id &&
@@ -79,7 +77,6 @@ export async function POST(req: Request) {
         break;
       }
 
-      // Triggered if a hold is canceled or expires after 7 days
       case 'payment_intent.canceled': {
         const paymentIntent = event.data.object as Stripe.PaymentIntent;
         const { lobbyId } = paymentIntent.metadata || {};
@@ -105,8 +102,9 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ received: true });
-  } catch (err: any) {
-    console.error(`Error processing webhook event ${event.type}:`, err.message);
+  } catch (err: unknown) {
+    const errMessage = err instanceof Error ? err.message : 'Processing failed';
+    console.error(`Error processing webhook event:`, errMessage);
     return NextResponse.json(
       { error: 'Webhook handler processing failed' },
       { status: 500 }
