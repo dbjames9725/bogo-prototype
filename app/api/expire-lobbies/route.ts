@@ -1,18 +1,22 @@
 import { NextResponse } from 'next/server';
-import { stripe } from '@/lib/stripe';
+import Stripe from 'stripe';
 import { supabase } from '@/lib/supabase';
 
-export async function GET(req: Request) {
-  try {
-    // 1. Calculate time threshold (24 hours ago)
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: '2023-10-16',
+});
 
-    // 2. Query PENDING lobbies older than 24 hours
+export async function GET() {
+  try {
+    // 1. Calculate time threshold (15 minutes ago)
+    const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+
+    // 2. Query PENDING lobbies created over 15 minutes ago
     const { data: expiredLobbies, error: fetchError } = await supabase
       .from('lobbies')
       .select('*')
       .eq('status', 'PENDING')
-      .lt('created_at', twentyFourHoursAgo);
+      .lt('created_at', fifteenMinutesAgo);
 
     if (fetchError) {
       console.error('Error fetching expired lobbies:', fetchError);
@@ -23,16 +27,27 @@ export async function GET(req: Request) {
       return NextResponse.json({ message: 'No expired lobbies found.' });
     }
 
-    // 3. Process each expired lobby: Cancel Stripe payment hold & update status
+    // 3. Process each expired lobby: Cancel Stripe payment holds & update status
     const processedIds: string[] = [];
 
     for (const lobby of expiredLobbies) {
-      // Cancel host's payment authorization hold if present
+      // Cancel Host payment authorization hold if present
       if (lobby.host_payment_intent_id) {
         try {
           await stripe.paymentIntents.cancel(lobby.host_payment_intent_id);
-        } catch (stripeErr: any) {
-          console.error(`Failed to cancel Stripe hold for lobby ${lobby.id}:`, stripeErr.message);
+        } catch (stripeErr) {
+          const e = stripeErr as Error;
+          console.error(`Failed to cancel Host hold for lobby ${lobby.id}:`, e.message);
+        }
+      }
+
+      // Cancel Partner payment authorization hold if present
+      if (lobby.partner_payment_intent_id) {
+        try {
+          await stripe.paymentIntents.cancel(lobby.partner_payment_intent_id);
+        } catch (stripeErr) {
+          const e = stripeErr as Error;
+          console.error(`Failed to cancel Partner hold for lobby ${lobby.id}:`, e.message);
         }
       }
 
@@ -52,8 +67,10 @@ export async function GET(req: Request) {
       expiredCount: processedIds.length,
       expiredLobbyIds: processedIds,
     });
-  } catch (err: any) {
-    console.error('Expire Lobbies Route Error:', err.message);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err) {
+    const e = err as Error;
+    console.error('Expire Lobbies Route Error:', e.message);
+    return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }
+
