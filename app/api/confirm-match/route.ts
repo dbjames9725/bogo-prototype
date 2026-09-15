@@ -13,8 +13,12 @@ export async function OPTIONS() {
 }
 
 export async function POST(req: Request) {
+  let hostCaptured = false;
+  let hostIntentId: string | null = null;
+
   try {
-    const { lobbyId } = await req.json();
+    const body = await req.json();
+    const lobbyId = body?.lobbyId;
 
     if (!lobbyId) {
       return NextResponse.json(
@@ -46,6 +50,7 @@ export async function POST(req: Request) {
     }
 
     const { host_payment_intent_id, partner_payment_intent_id, item_price, deal_type } = lobby;
+    hostIntentId = host_payment_intent_id ?? null;
 
     if (!host_payment_intent_id || !partner_payment_intent_id) {
       return NextResponse.json(
@@ -62,32 +67,55 @@ export async function POST(req: Request) {
 
     if (hostIntent.status !== 'requires_capture' && hostIntent.status !== 'succeeded') {
       return NextResponse.json(
-        { error: `Host payment intent is in invalid state: ${hostIntent.status}` },
+        { error: `Host payment hold expired or invalid status: ${hostIntent.status}` },
         { status: 400, headers: corsHeaders }
       );
     }
 
     if (partnerIntent.status !== 'requires_capture' && partnerIntent.status !== 'succeeded') {
       return NextResponse.json(
-        { error: `Partner payment intent is in invalid state: ${partnerIntent.status}` },
+        { error: `Partner payment hold expired or invalid status: ${partnerIntent.status}` },
         { status: 400, headers: corsHeaders }
       );
     }
 
-    // 3. CAPTURE DUAL PAYMENT HOLDS IN PARALLEL
-    const [hostCapture, partnerCapture] = await Promise.all([
-      hostIntent.status === 'requires_capture'
-        ? stripe.paymentIntents.capture(host_payment_intent_id)
-        : hostIntent,
-      partnerIntent.status === 'requires_capture'
-        ? stripe.paymentIntents.capture(partner_payment_intent_id)
-        : partnerIntent,
-    ]);
+    // 3. SEQUENTIAL CAPTURE WITH ROLLBACK SAFETY
+    // Step 3A: Capture Host
+    if (hostIntent.status === 'requires_capture') {
+      await stripe.paymentIntents.capture(
+        host_payment_intent_id,
+        {},
+        { idempotencyKey: `capture_host_${lobbyId}` }
+      );
+      hostCaptured = true;
+    }
 
-    if (hostCapture.status !== 'succeeded' || partnerCapture.status !== 'succeeded') {
+    // Step 3B: Capture Partner (If Partner fails, Rollback Host!)
+    try {
+      if (partnerIntent.status === 'requires_capture') {
+        await stripe.paymentIntents.capture(
+          partner_payment_intent_id,
+          {},
+          { idempotencyKey: `capture_partner_${lobbyId}` }
+        );
+      }
+    } catch (partnerErr: unknown) {
+      const pMessage = partnerErr instanceof Error ? partnerErr.message : 'Unknown payment failure';
+      console.error('Partner capture failed! Executing compensating rollback for Host...', pMessage);
+
+      if (hostCaptured && hostIntentId) {
+        await stripe.refunds.create(
+          {
+            payment_intent: hostIntentId,
+            reason: 'requested_by_customer',
+          },
+          { idempotencyKey: `rollback_refund_${lobbyId}` }
+        );
+      }
+
       return NextResponse.json(
-        { error: 'Failed capturing one or both payment holds' },
-        { status: 500, headers: corsHeaders }
+        { error: 'Partner payment capture failed. Host authorization hold was automatically refunded.' },
+        { status: 402, headers: corsHeaders }
       );
     }
 
@@ -144,8 +172,9 @@ export async function POST(req: Request) {
         expMonth: realCard.exp_month,
         expYear: realCard.exp_year,
       };
-    } catch (issuingErr: any) {
-      console.warn('Stripe Issuing not active. Using simulated card for testing:', issuingErr.message);
+    } catch (issuingErr: unknown) {
+      const iMessage = issuingErr instanceof Error ? issuingErr.message : 'Issuing inactive';
+      console.warn('Stripe Issuing not active. Using simulated card for testing:', iMessage);
 
       virtualCard = {
         id: `ic_mock_${shortLobbyId}`,
@@ -185,10 +214,24 @@ export async function POST(req: Request) {
       },
       { headers: corsHeaders }
     );
-  } catch (err: any) {
-    console.error('Confirm Match Error:', err.message);
+  } catch (err: unknown) {
+    const errMessage = err instanceof Error ? err.message : 'Internal Server Error';
+    console.error('Confirm Match Error:', errMessage);
+
+    // Emergency Fallback: If anything crashes after Host capture, attempt refund
+    if (hostCaptured && hostIntentId) {
+      try {
+        await stripe.refunds.create({
+          payment_intent: hostIntentId,
+          reason: 'requested_by_customer',
+        });
+      } catch (refundErr) {
+        console.error('Emergency Host refund failure:', refundErr);
+      }
+    }
+
     return NextResponse.json(
-      { error: err.message || 'Internal Server Error' },
+      { error: errMessage },
       { status: 500, headers: corsHeaders }
     );
   }
