@@ -18,6 +18,7 @@ const STATE_TAX_RATES: Record<string, number> = {
   WV: 0.0657, WY: 0.0536,
 };
 
+// RESTORED 8-CHARACTER AVATAR ROSTER WITH EMOJI ICONS
 const AVATAR_ROSTER = [
   { id: 'ninja', name: 'Deal Ninja', role: 'Female', icon: '🥷', quote: 'Slashing prices in silence' },
   { id: 'ranger', name: 'Loot Ranger', role: 'Female', icon: '🧝‍♀️', quote: 'Sniping 50% deals from afar' },
@@ -186,7 +187,7 @@ const CheckoutForm = memo(function CheckoutForm({
             required
             value={formData.name}
             onChange={(e) => onFormChange('name', e.target.value)}
-            className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full p-3 text-base border border-neutral-800 rounded-lg bg-neutral-950 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
         <div>
@@ -197,7 +198,7 @@ const CheckoutForm = memo(function CheckoutForm({
             required
             value={formData.street1}
             onChange={(e) => onFormChange('street1', e.target.value)}
-            className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full p-3 text-base border border-neutral-800 rounded-lg bg-neutral-950 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
         <div className="grid grid-cols-3 gap-2">
@@ -209,7 +210,7 @@ const CheckoutForm = memo(function CheckoutForm({
               required
               value={formData.city}
               onChange={(e) => onFormChange('city', e.target.value)}
-              className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white"
+              className="w-full p-3 text-base border border-neutral-800 rounded-lg bg-neutral-950 text-white"
             />
           </div>
           <div>
@@ -217,7 +218,7 @@ const CheckoutForm = memo(function CheckoutForm({
             <select
               value={formData.state}
               onChange={(e) => onFormChange('state', e.target.value)}
-              className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="w-full p-3 text-base border border-neutral-800 rounded-lg bg-neutral-950 text-white font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
             >
               {Object.keys(STATE_TAX_RATES).sort().map((st) => (
                 <option key={st} value={st}>
@@ -230,11 +231,12 @@ const CheckoutForm = memo(function CheckoutForm({
             <label className="block text-[11px] font-semibold text-neutral-300 mb-1">ZIP</label>
             <input
               type="text"
+              inputMode="numeric"
               placeholder="10001"
               required
               value={formData.zip}
               onChange={(e) => onFormChange('zip', e.target.value)}
-              className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white"
+              className="w-full p-3 text-base border border-neutral-800 rounded-lg bg-neutral-950 text-white"
             />
           </div>
         </div>
@@ -242,11 +244,12 @@ const CheckoutForm = memo(function CheckoutForm({
           <label className="block text-[11px] font-semibold text-neutral-300 mb-1">Phone</label>
           <input
             type="tel"
+            inputMode="tel"
             placeholder="(555) 000-0000"
             required
             value={formData.phone}
             onChange={(e) => onFormChange('phone', e.target.value)}
-            className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white"
+            className="w-full p-3 text-base border border-neutral-800 rounded-lg bg-neutral-950 text-white"
           />
         </div>
       </div>
@@ -379,13 +382,13 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
 
   const intentIdRef = useRef<string | null>(null);
 
-  // ENSURED EMPTY INITIAL ZIP CODE FOR BOTH PLAYER 1 AND PLAYER 2
+  // EMPTY INITIAL ZIP CODE
   const [formData, setFormData] = useState<AddressData>({
     name: '',
     street1: '',
     city: '',
     state: 'NY',
-    zip: '', // Explicitly empty for manual user entry
+    zip: '',
     phone: '',
   });
 
@@ -518,17 +521,37 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     await fetchLobbyState();
   };
 
-  const handleCopyLink = () => {
-    if (typeof window !== 'undefined') {
-      navigator.clipboard.writeText(window.location.href);
+  // WEB SHARE API INTEGRATION WITH DESKTOP FALLBACK
+  const handleCopyLink = async () => {
+    if (typeof window === 'undefined') return;
+
+    const shareData = {
+      title: `BOGO Split Deal - ${lobby?.item_name || 'Item'}`,
+      text: `Split this 50% off BOGO deal with me on ${lobby?.item_name || 'this item'}!`,
+      url: window.location.href,
+    };
+
+    if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
+      try {
+        await navigator.share(shareData);
+        return;
+      } catch (err) {
+        // User closed native share sheet or share cancelled
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(window.location.href);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Copy failed:', err);
     }
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-black text-white">
+      <div className="flex items-center justify-center min-h-[100dvh] bg-black text-white">
         <p className="text-neutral-400 text-sm font-medium animate-pulse">Loading BOGO Lobby...</p>
       </div>
     );
@@ -536,7 +559,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
 
   if (fetchError || !lobby) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-black text-white">
+      <div className="flex items-center justify-center min-h-[100dvh] bg-black text-white">
         <p className="text-rose-400 font-semibold">{fetchError || 'Lobby not found.'}</p>
       </div>
     );
@@ -557,7 +580,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     const totalSaved = originalPrice - splitBase;
 
     return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center p-4">
+      <div className="min-h-[100dvh] bg-black text-white flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-neutral-950 border border-emerald-500/30 shadow-2xl rounded-3xl p-6 sm:p-8 text-center space-y-6">
           <div className="space-y-3">
             <div className="w-16 h-16 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-full flex items-center justify-center mx-auto text-3xl font-extrabold shadow-lg shadow-emerald-500/10">
@@ -669,7 +692,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const currentStage = getWaitingStage();
 
   return (
-    <div className="min-h-screen bg-black text-white p-4 flex flex-col items-center justify-center">
+    <div className="min-h-[100dvh] bg-black text-white p-4 flex flex-col items-center justify-center">
      
       {/* KEYFRAME ANIMATIONS */}
       <style jsx global>{`
@@ -843,11 +866,11 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
 
             <button
               onClick={handleCopyLink}
-              className="w-full py-3.5 bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:brightness-110 text-black font-black text-xs uppercase tracking-wider rounded-xl transition cursor-pointer shadow-lg shadow-amber-500/10 transform active:scale-95"
+              className="w-full py-4 bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:brightness-110 text-black font-black text-xs uppercase tracking-wider rounded-xl transition cursor-pointer shadow-lg shadow-amber-500/10 transform active:scale-95"
             >
               {copied
                 ? '✓ LOBBY LINK COPIED TO CLIPBOARD!'
-                : '📢 COPY CO-OP LOBBY LINK'}
+                : '📢 SHARE CO-OP LOBBY LINK'}
             </button>
           </div>
         )}
