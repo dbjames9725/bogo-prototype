@@ -18,7 +18,6 @@ const STATE_TAX_RATES: Record<string, number> = {
   WV: 0.0657, WY: 0.0536,
 };
 
-// RESTORED 8-CHARACTER AVATAR ROSTER WITH EMOJI ICONS
 const AVATAR_ROSTER = [
   { id: 'ninja', name: 'Deal Ninja', role: 'Female', icon: '🥷', quote: 'Slashing prices in silence' },
   { id: 'ranger', name: 'Loot Ranger', role: 'Female', icon: '🧝‍♀️', quote: 'Sniping 50% deals from afar' },
@@ -220,6 +219,7 @@ const CheckoutForm = memo(function CheckoutForm({
               onChange={(e) => onFormChange('state', e.target.value)}
               className="w-full p-3 text-base border border-neutral-800 rounded-lg bg-neutral-950 text-white font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
             >
+              <option value="">Select State</option>
               {Object.keys(STATE_TAX_RATES).sort().map((st) => (
                 <option key={st} value={st}>
                   {st} ({(STATE_TAX_RATES[st] * 100).toFixed(2)}%)
@@ -232,7 +232,7 @@ const CheckoutForm = memo(function CheckoutForm({
             <input
               type="text"
               inputMode="numeric"
-              placeholder="10001"
+              placeholder="ZIP Code"
               required
               value={formData.zip}
               onChange={(e) => onFormChange('zip', e.target.value)}
@@ -272,7 +272,7 @@ const CheckoutForm = memo(function CheckoutForm({
           <span className="font-mono text-neutral-300">+${platformFee.toFixed(2)}</span>
         </div>
         <div className="flex justify-between text-neutral-400">
-          <span>Estimated Sales Tax ({formData.state}):</span>
+          <span>Estimated Sales Tax ({formData.state || 'N/A'}):</span>
           <span className="font-mono text-neutral-300">+${calculatedTax.toFixed(2)}</span>
         </div>
         <div className="flex justify-between text-neutral-400">
@@ -298,6 +298,7 @@ const CheckoutForm = memo(function CheckoutForm({
         </div>
       )}
 
+      {/* AVATAR WALK DOWN ANIMATION (ENABLED FOR BOTH PLAYER 1 AND PLAYER 2) */}
       {avatarStage !== 'idle' && (
         <div className="flex flex-col items-center justify-center pt-2">
           <div
@@ -382,13 +383,13 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
 
   const intentIdRef = useRef<string | null>(null);
 
-  // EMPTY INITIAL ZIP CODE
+  // ENSURED ZIP & STATE START COMPLETELY EMPTY FOR BOTH HOST AND PARTNER
   const [formData, setFormData] = useState<AddressData>({
     name: '',
     street1: '',
     city: '',
-    state: 'NY',
-    zip: '',
+    state: '',
+    zip: '', // Explicitly empty string for manual entry
     phone: '',
   });
 
@@ -413,8 +414,12 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
+  // TRIGGER AVATAR WALK SEQUENCE FOR BOTH PLAYER 1 AND PLAYER 2
   const triggerWalkSequence = (av: typeof AVATAR_ROSTER[0]) => {
     setSelectedAvatar(av);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`avatar_${lobbyId}`, av.id);
+    }
     setAvatarStage('walking');
     setTimeout(() => {
       setAvatarStage('arrived');
@@ -430,7 +435,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
         body: JSON.stringify({
           lobbyId,
           role: currentRole,
-          userState: state,
+          userState: state || 'NY',
           paymentIntentId: intentIdRef.current,
         }),
       });
@@ -521,7 +526,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     await fetchLobbyState();
   };
 
-  // WEB SHARE API INTEGRATION WITH DESKTOP FALLBACK
   const handleCopyLink = async () => {
     if (typeof window === 'undefined') return;
 
@@ -536,7 +540,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
         await navigator.share(shareData);
         return;
       } catch (err) {
-        // User closed native share sheet or share cancelled
+        // User closed native share sheet
       }
     }
 
