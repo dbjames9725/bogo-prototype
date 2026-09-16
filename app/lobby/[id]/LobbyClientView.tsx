@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, memo } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
@@ -20,9 +21,9 @@ const STATE_TAX_RATES: Record<string, number> = {
 
 const AVATAR_ROSTER = [
   { id: 'ninja', name: 'Deal Ninja', role: 'Female', icon: '🥷', quote: 'Slashing prices in silence' },
-  { id: 'ranger', name: 'Loot Ranger', role: 'Female', icon: '🧝‍♀️', quote: 'Sniping 50% deals from afar' },
+  { id: 'ranger', name: 'Loot Ranger', role: 'Female', icon: '🏹', quote: 'Sniping 50% deals from afar' },
   { id: 'elder_f', name: 'Bargain Matriarch', role: 'Senior Female', icon: '👵', quote: 'Never pays full price' },
-  { id: 'knight', name: 'Savings Knight', role: 'Male', icon: '⚔️', quote: 'Shielding your wallet' },
+  { id: 'knight', name: 'Savings Knight', role: 'Male', icon: '🛡️', quote: 'Shielding your wallet' },
   { id: 'wizard', name: 'Discount Wizard', role: 'Male', icon: '🧙‍♂️', quote: 'Casting price cuts' },
   { id: 'elder_m', name: 'Coupon Elder', role: 'Senior Male', icon: '👴', quote: 'Back in my day, BOGO was free!' },
   { id: 'teen_skate', name: 'Skate Splitter', role: 'Teenager', icon: '🛹', quote: 'Flexing half-price drops' },
@@ -147,6 +148,8 @@ const CheckoutForm = memo(function CheckoutForm({
         if (isHost && typeof window !== 'undefined') {
           localStorage.setItem(`hosted_${lobbyId}`, 'true');
         }
+
+        toast.success('⚡ Pre-authorization hold secured successfully!');
 
         if (!isHost) {
           await new Promise((res) => setTimeout(res, 300));
@@ -311,7 +314,7 @@ const CheckoutForm = memo(function CheckoutForm({
             </div>
             <div className="bg-amber-400 text-black text-[11px] font-black px-3.5 py-2 rounded-xl shadow-xl border border-amber-300 flex items-center gap-1.5">
               <span>Click here when ready to save some money!</span>
-              <span className="text-base">👇</span>
+              <span className="text-base"></span>
             </div>
           </div>
         </div>
@@ -510,7 +513,30 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           filter: `id=eq.${lobbyId}`,
         },
         (payload) => {
-          setLobby(payload.new as LobbyData);
+          const updatedLobby = payload.new as LobbyData;
+
+          setLobby((prevLobby) => {
+            if (prevLobby) {
+              if (!prevLobby.partner_payment_intent_id && updatedLobby.partner_payment_intent_id) {
+                toast.success('🎉 Player 2 joined! Authorizing shared payment holds...', {
+                  duration: 5000,
+                });
+              }
+
+              if (prevLobby.status !== 'MATCHED' && updatedLobby.status === 'MATCHED') {
+                toast.success('⚡ Co-Op Match Confirmed! Virtual card generated.', {
+                  duration: 6000,
+                });
+              }
+
+              if (prevLobby.status !== 'EXPIRED' && updatedLobby.status === 'EXPIRED') {
+                toast.error('⏰ Lobby time limit expired. Payment holds released.', {
+                  duration: 5000,
+                });
+              }
+            }
+            return updatedLobby;
+          });
         }
       )
       .subscribe();
@@ -679,14 +705,14 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     } else if (waitingSeconds < 30) {
       return {
         stage: 'sniffling',
-        badge: 'STATUS: GETTING TEARY EYED 💧',
+        badge: 'STATUS: GETTING TEARY EYED ',
         bubble: "Is anyone coming? I really want this 50% discount...",
         subtext: "Sniffling dramatically on knees...",
       };
     } else {
       return {
         stage: 'begging',
-        badge: 'STATUS: BEGGING ON KNEES 🙇',
+        badge: 'STATUS: BEGGING ON KNEES ',
         bubble: "PLEASE JOIN THE MATCH! HELP ME SAVE THIS LOOT PLEASE!",
         subtext: "Begging on knees holding a 'NEED PLAYER 2' sign!",
       };
@@ -697,7 +723,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
 
   return (
     <div className="min-h-[100dvh] bg-black text-white p-4 flex flex-col items-center justify-center">
-     
       {/* KEYFRAME ANIMATIONS */}
       <style jsx global>{`
         @keyframes walkDown {
@@ -810,7 +835,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           {/* PLAYER 1 SLOT */}
           <div className="bg-neutral-900/90 border border-amber-500/30 p-4 rounded-2xl text-center space-y-2 relative">
             <div className="text-[10px] font-black uppercase tracking-wider text-amber-400">Player 1 (Host)</div>
-            <div className="text-4xl my-1">{role === 'HOST' ? selectedAvatar.icon : '🥷'}</div>
+            <div className="text-4xl my-1">{role === 'HOST' ? selectedAvatar.icon : ''}</div>
             <div className="text-xs font-bold text-white">{role === 'HOST' ? selectedAvatar.name : 'Host Player'}</div>
             <div className="text-[10px] text-emerald-400 font-semibold">
               {lobby.host_payment_intent_id ? '✓ READY TO SPLIT' : 'SELECTING HOLD'}
@@ -820,7 +845,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           {/* PLAYER 2 SLOT */}
           <div className="bg-neutral-900/90 border border-neutral-800 p-4 rounded-2xl text-center space-y-2">
             <div className="text-[10px] font-black uppercase tracking-wider text-neutral-500">Player 2 (Partner)</div>
-            <div className="text-4xl my-1">{role === 'PARTNER' ? selectedAvatar.icon : '🤝'}</div>
+            <div className="text-4xl my-1">{role === 'PARTNER' ? selectedAvatar.icon : ''}</div>
             <div className="text-xs font-bold text-neutral-400">
               {role === 'PARTNER' ? selectedAvatar.name : 'Waiting for Partner...'}
             </div>
@@ -857,7 +882,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
 
               {currentStage.stage === 'begging' && (
                 <div className="mt-1 bg-amber-200 text-black text-[9px] font-black px-2 py-0.5 rounded border border-amber-400 rotate-[-2deg] shadow-md">
-                  🪧 NEED PLAYER 2 TO SAVE LOOT
+                  NEED PLAYER 2 TO SAVE LOOT
                 </div>
               )}
             </div>
@@ -874,7 +899,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
             >
               {copied
                 ? '✓ LOBBY LINK COPIED TO CLIPBOARD!'
-                : '📢 SHARE CO-OP LOBBY LINK'}
+                : 'SHARE CO-OP LOBBY LINK'}
             </button>
           </div>
         )}
