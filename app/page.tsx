@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 const STATE_TAX_RATES: Record<string, { name: string; rate: number }> = {
   AL: { name: 'Alabama', rate: 0.0924 }, AK: { name: 'Alaska', rate: 0.0181 }, AZ: { name: 'Arizona', rate: 0.0837 },
@@ -25,7 +26,7 @@ const STATE_TAX_RATES: Record<string, { name: string; rate: number }> = {
 
 const AVATAR_ROSTER = [
   { id: 'ninja', name: 'Deal Ninja', role: 'Female', icon: '🥷', quote: 'Slashing prices in silence' },
-  { id: 'ranger', name: 'Loot Ranger', role: 'Female', icon: '🧝‍♀️', quote: 'Sniping 50% deals from afar' },
+  { id: 'ranger', name: 'Loot Ranger', role: 'Female', icon: '🏹', quote: 'Sniping 50% deals from afar' },
   { id: 'elder_f', name: 'Bargain Matriarch', role: 'Senior Female', icon: '👵', quote: 'Never pays full price' },
   { id: 'knight', name: 'Savings Knight', role: 'Male', icon: '⚔️', quote: 'Shielding your wallet' },
   { id: 'wizard', name: 'Discount Wizard', role: 'Male', icon: '🧙‍♂️', quote: 'Casting price cuts' },
@@ -36,6 +37,13 @@ const AVATAR_ROSTER = [
 
 const PRESET_PRICES = [25, 50, 100, 150, 200, 500];
 
+const TIMER_OPTIONS = [
+  { label: '⚡ 15 Min', value: 15, subtitle: 'Quick Share' },
+  { label: '⏱️ 1 Hour', value: 60, subtitle: 'Recommended' },
+  { label: '🌙 6 Hours', value: 360, subtitle: 'Half Day' },
+  { label: '🌐 24 Hours', value: 1440, subtitle: 'Max Liquidity' },
+];
+
 export default function HomePage() {
   const router = useRouter();
 
@@ -45,6 +53,7 @@ export default function HomePage() {
   const [selectedState, setSelectedState] = useState<string>('NY');
   const [includeTax, setIncludeTax] = useState<boolean>(true);
   const [selectedAvatar, setSelectedAvatar] = useState(AVATAR_ROSTER[0]);
+  const [selectedDuration, setSelectedDuration] = useState<number>(60); // Default: 1 Hour (60 mins)
 
   const [isCreatingLobby, setIsCreatingLobby] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
@@ -86,6 +95,7 @@ export default function HomePage() {
           itemName,
           itemPrice,
           dealType,
+          durationMinutes: selectedDuration,
           userState: selectedState,
           includeTax,
           hostAvatar: selectedAvatar.id,
@@ -143,6 +153,17 @@ export default function HomePage() {
 
       <div className="max-w-xl w-full mx-auto space-y-6 relative">
 
+        {/* TOP NAVIGATION BANNER */}
+        <div className="w-full flex justify-between items-center bg-neutral-900 border border-neutral-800 p-3.5 rounded-2xl">
+          <span className="text-xs text-neutral-400 font-medium">Looking for active deals?</span>
+          <Link
+            href="/explore"
+            className="text-xs font-bold text-amber-400 hover:text-amber-300 transition"
+          >
+            🔥 Explore Public Deals →
+          </Link>
+        </div>
+
         {/* GAMIFIED HEADER */}
         <div className="text-center space-y-2">
           <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-black text-xs font-black uppercase tracking-widest shadow-md shadow-amber-500/10">
@@ -152,7 +173,7 @@ export default function HomePage() {
             SPLIT ANY DEAL 50/50
           </h1>
           <p className="text-xs text-neutral-400">
-            Calculate exact split shares, state taxes, and summon Player 2 in real time.
+            Calculate exact split shares, state taxes, and summon Shopper 2 in real time.
           </p>
         </div>
 
@@ -252,11 +273,44 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* AVATAR SELECTOR (PLAYER 1) */}
+          {/* TIMER DURATION SELECTION PILLS */}
+          <div className="space-y-2">
+            <label className="text-xs font-black uppercase text-amber-400 tracking-wider block">
+              Match Window Duration
+            </label>
+            <div className="grid grid-cols-2 gap-2.5">
+              {TIMER_OPTIONS.map((opt) => {
+                const isSelected = selectedDuration === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setSelectedDuration(opt.value)}
+                    className={`p-3 rounded-2xl border text-left transition cursor-pointer ${
+                      isSelected
+                        ? 'bg-amber-400 text-black border-amber-400 font-bold shadow-lg shadow-amber-500/10'
+                        : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:border-neutral-700'
+                    }`}
+                  >
+                    <div className="text-xs font-black">{opt.label}</div>
+                    <div
+                      className={`text-[10px] ${
+                        isSelected ? 'text-neutral-900 font-semibold' : 'text-neutral-500'
+                      }`}
+                    >
+                      {opt.subtitle}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* AVATAR SELECTOR (SHOPPER 1) */}
           <div className="space-y-2">
             <div className="flex justify-between items-center">
               <label className="text-xs font-black uppercase text-amber-400 tracking-wider">
-                Select Your Hero (Player 1)
+                Select Your Hero (Shopper 1)
               </label>
               <span className="text-[10px] text-neutral-400 font-semibold">{selectedAvatar.role}</span>
             </div>
@@ -299,7 +353,7 @@ export default function HomePage() {
 
             <div className="flex justify-between text-neutral-300 pt-2 border-t border-neutral-800">
               <div>
-                <span className="block font-extrabold text-white">Your Player 1 Share</span>
+                <span className="block font-extrabold text-white">Your Shopper 1 Share</span>
                 <span className="text-[10px] text-neutral-500">Base split cost (Pre-tax)</span>
               </div>
               <span className="font-black text-emerald-400 text-base font-mono">
