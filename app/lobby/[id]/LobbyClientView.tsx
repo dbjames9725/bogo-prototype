@@ -379,6 +379,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const [role, setRole] = useState<'HOST' | 'PARTNER'>('PARTNER');
   const [isUpdatingIntent, setIsUpdatingIntent] = useState<boolean>(false);
   const [selectedAvatar, setSelectedAvatar] = useState(AVATAR_ROSTER[0]);
+  const [hasChosenAvatar, setHasChosenAvatar] = useState<boolean>(false);
   const [waitingSeconds, setWaitingSeconds] = useState(0);
 
   const [avatarStage, setAvatarStage] = useState<'idle' | 'walking' | 'arrived'>('idle');
@@ -417,6 +418,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
 
   const triggerWalkSequence = (av: typeof AVATAR_ROSTER[0]) => {
     setSelectedAvatar(av);
+    setHasChosenAvatar(true);
     if (typeof window !== 'undefined') {
       localStorage.setItem(`avatar_${lobbyId}`, av.id);
     }
@@ -473,7 +475,10 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
       const savedAvatarId = localStorage.getItem(`avatar_${lobbyId}`);
       if (savedAvatarId) {
         const foundAv = AVATAR_ROSTER.find((a) => a.id === savedAvatarId);
-        if (foundAv) setSelectedAvatar(foundAv);
+        if (foundAv) {
+          setSelectedAvatar(foundAv);
+          setHasChosenAvatar(true);
+        }
       }
     }
 
@@ -820,8 +825,8 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           </div>
         </div>
 
-        {/* AVATAR SELECTOR - HIDDEN ONCE USER HAS PAID */}
-        {!hasUserPaid && (
+        {/* AVATAR SELECTOR - HIDDEN ONCE USER SELECTIONS OR PAYMENT OCCURS */}
+        {!hasChosenAvatar && !hasUserPaid && (
           <div className="bg-neutral-900/80 p-4 rounded-2xl border border-neutral-800 space-y-3">
             <div className="flex justify-between items-center">
               <label className="text-xs font-black uppercase text-amber-400 tracking-wider">
@@ -958,3 +963,4 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     </div>
   );
 }
+
