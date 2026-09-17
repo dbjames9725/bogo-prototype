@@ -17,10 +17,13 @@ interface Lobby {
   };
 }
 
+const FEATURED_BRANDS = ['All', 'Nike', 'Ulta', 'Sephora', 'Amazon', 'Adidas'];
+
 export default function ExploreDealsPage() {
   const [lobbies, setLobbies] = useState<Lobby[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedBrand, setSelectedBrand] = useState('All');
 
   const fetchLobbies = async () => {
     try {
@@ -64,13 +67,22 @@ export default function ExploreDealsPage() {
     };
   }, []);
 
-  const filteredLobbies = lobbies.filter((lobby) =>
-    lobby.item_name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Filter lobbies by selected brand pill AND search input text
+  const filteredLobbies = lobbies.filter((lobby) => {
+    const matchesSearch = lobby.item_name
+      .toLowerCase()
+      .includes(searchQuery.toLowerCase());
+
+    const matchesBrand =
+      selectedBrand === 'All' ||
+      lobby.item_name.toLowerCase().includes(selectedBrand.toLowerCase());
+
+    return matchesSearch && matchesBrand;
+  });
 
   return (
     <div className="min-h-[100dvh] bg-black text-white p-4 sm:p-8">
-      <div className="mx-auto max-w-5xl space-y-8">
+      <div className="mx-auto max-w-5xl space-y-6">
        
         {/* HEADER SECTION */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -119,6 +131,29 @@ export default function ExploreDealsPage() {
           </svg>
         </div>
 
+        {/* BRAND & STORE FILTER PILLS */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
+          <span className="text-xs font-bold uppercase tracking-wider text-neutral-500 mr-1 shrink-0">
+            Stores:
+          </span>
+          {FEATURED_BRANDS.map((brand) => {
+            const isActive = selectedBrand === brand;
+            return (
+              <button
+                key={brand}
+                onClick={() => setSelectedBrand(brand)}
+                className={`px-4 py-2 rounded-xl text-xs font-extrabold transition shrink-0 cursor-pointer ${
+                  isActive
+                    ? 'bg-amber-400 text-black shadow-lg shadow-amber-500/20'
+                    : 'bg-neutral-900 text-neutral-400 border border-neutral-800 hover:border-neutral-700 hover:text-white'
+                }`}
+              >
+                {brand === 'All' ? '🌐 All Stores' : brand}
+              </button>
+            );
+          })}
+        </div>
+
         {/* LOBBIES GRID */}
         {loading ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -134,8 +169,10 @@ export default function ExploreDealsPage() {
             <div className="text-4xl">🛒</div>
             <h3 className="text-lg font-bold text-white">No Active Lobbies Found</h3>
             <p className="text-xs text-neutral-400 max-w-sm mx-auto">
-              {searchQuery
-                ? `No pending BOGO splits match "${searchQuery}".`
+              {selectedBrand !== 'All'
+                ? `No active BOGO splits found for ${selectedBrand}.`
+                : searchQuery
+                ? `No pending splits match "${searchQuery}".`
                 : 'There are currently no open lobbies waiting for a partner.'}
             </p>
             <Link
@@ -211,5 +248,4 @@ export default function ExploreDealsPage() {
     </div>
   );
 }
-
 
