@@ -48,6 +48,8 @@ export interface LobbyData {
   total_price: number;
   deal_type: string;
   status: string;
+  expires_at?: string;
+  duration_minutes?: number;
   host_payment_intent_id?: string;
   partner_payment_intent_id?: string;
   issuing_card_id?: string;
@@ -397,23 +399,55 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
 
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [timeLeft, setTimeLeft] = useState(899);
+  const [timeLeft, setTimeLeft] = useState<number>(0);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   const isSubmittingRef = useRef<boolean>(false);
 
+  // Dynamic expiration countdown calculation against lobby.expires_at
   useEffect(() => {
-    const timer = setInterval(() => {
-      setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
+    if (!lobby?.expires_at) return;
+
+    const updateCountdown = () => {
+      const expirationTime = new Date(lobby.expires_at!).getTime();
+      const currentTime = Date.now();
+      const secondsRemaining = Math.max(0, Math.floor((expirationTime - currentTime) / 1000));
+
+      setTimeLeft(secondsRemaining);
+
+      if (secondsRemaining === 0 && lobby.status === 'PENDING') {
+        toast.error('⏰ Lobby match window expired. Payment holds released.');
+      }
+    };
+
+    updateCountdown();
+    const timerInterval = setInterval(updateCountdown, 1000);
+
+    return () => clearInterval(timerInterval);
+  }, [lobby?.expires_at, lobby?.status]);
+
+  // Secondary ticker for animated begging stage escalation
+  useEffect(() => {
+    const stageInterval = setInterval(() => {
       setWaitingSeconds((prev) => prev + 1);
     }, 1000);
-    return () => clearInterval(timer);
+    return () => clearInterval(stageInterval);
   }, []);
 
   const formatTimer = (seconds: number) => {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return `${m}:${s < 10 ? '0' : ''}${s}`;
+    if (seconds <= 0) return '0:00';
+
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+
+    const paddedMinutes = minutes < 10 && hours > 0 ? `0${minutes}` : `${minutes}`;
+    const paddedSeconds = secs < 10 ? `0${secs}` : `${secs}`;
+
+    if (hours > 0) {
+      return `${hours}:${paddedMinutes}:${paddedSeconds}`;
+    }
+    return `${minutes}:${paddedSeconds}`;
   };
 
   const triggerWalkSequence = (av: typeof AVATAR_ROSTER[0]) => {
