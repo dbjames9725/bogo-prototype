@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { headers } from 'next/headers';
 import Stripe from 'stripe';
 import { stripe } from '@/lib/stripe';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase-admin'; // Use Admin client to bypass RLS
 
 export const runtime = 'nodejs';
 
@@ -50,7 +50,7 @@ export async function POST(req: Request) {
             ? { host_payment_intent_id: paymentIntent.id }
             : { partner_payment_intent_id: paymentIntent.id };
 
-        const { data: updatedLobby, error: updateError } = await supabase
+        const { data: updatedLobby, error: updateError } = await supabaseAdmin
           .from('lobbies')
           .update(updateField)
           .eq('id', lobbyId)
@@ -67,7 +67,7 @@ export async function POST(req: Request) {
           updatedLobby.host_payment_intent_id &&
           updatedLobby.partner_payment_intent_id
         ) {
-          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://bogo-prototype-wheat.vercel.app';
           await fetch(`${baseUrl}/api/confirm-match`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -83,7 +83,7 @@ export async function POST(req: Request) {
 
         if (lobbyId) {
           console.log(`Hold canceled or expired for lobby ${lobbyId}. Marking lobby as EXPIRED.`);
-          await supabase
+          await supabaseAdmin
             .from('lobbies')
             .update({ status: 'EXPIRED' })
             .eq('id', lobbyId);
@@ -111,3 +111,4 @@ export async function POST(req: Request) {
     );
   }
 }
+
