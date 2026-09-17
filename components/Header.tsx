@@ -23,6 +23,17 @@ export default function Header() {
           {/* Navigation Links */}
           <nav className="flex items-center gap-2 sm:gap-4">
             <Link
+              href="/explore"
+              className={`px-3 py-2 rounded-md text-sm font-medium transition ${
+                pathname === '/explore'
+                  ? 'bg-blue-50 text-blue-600 font-semibold'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              }`}
+            >
+              🔥 Explore Deals
+            </Link>
+
+            <Link
               href="/"
               className={`px-3 py-2 rounded-md text-sm font-medium transition ${
                 pathname === '/'
@@ -56,3 +67,5 @@ export default function Header() {
     </header>
   );
 }
+
+
