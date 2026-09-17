@@ -268,7 +268,7 @@ const CheckoutForm = memo(function CheckoutForm({
           Hold Breakdown
         </div>
         <div className="flex justify-between text-neutral-300">
-          <span>{role === 'HOST' ? 'Host' : 'Partner'} Base Share (50% Off):</span>
+          <span>{role === 'HOST' ? 'Shopper 1 (Host)' : 'Shopper 2 (Partner)'} Base Share (50% Off):</span>
           <span className="font-mono text-white">${splitShare.toFixed(2)}</span>
         </div>
         <div className="flex justify-between text-neutral-400">
@@ -515,7 +515,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           setLobby((prevLobby) => {
             if (prevLobby) {
               if (!prevLobby.partner_payment_intent_id && updatedLobby.partner_payment_intent_id) {
-                toast.success('🎉 Player 2 joined! Authorizing shared payment holds...', {
+                toast.success('🎉 Shopper 2 joined! Authorizing shared payment holds...', {
                   duration: 5000,
                 });
               }
@@ -591,6 +591,9 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
       </div>
     );
   }
+
+  const hasUserPaid =
+    role === 'HOST' ? !!lobby.host_payment_intent_id : !!lobby.partner_payment_intent_id;
 
   if (lobby.status === 'MATCHED') {
     const originalPrice = Number(lobby.item_price) || 0;
@@ -699,15 +702,12 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     );
   }
 
-  const hasUserPaid =
-    role === 'HOST' ? !!lobby.host_payment_intent_id : !!lobby.partner_payment_intent_id;
-
   const getWaitingStage = () => {
     if (waitingSeconds < 15) {
       return {
         stage: 'warmup',
-        badge: 'STATUS: WAITING FOR PLAYER 2',
-        bubble: "Ready when you are! Let's get Player 2 in here!",
+        badge: 'STATUS: WAITING FOR SHOPPER 2',
+        bubble: "Ready when you are! Let's get Shopper 2 in here!",
         subtext: "Thumb twiddling in progress...",
       };
     } else if (waitingSeconds < 30) {
@@ -722,7 +722,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
         stage: 'begging',
         badge: 'STATUS: BEGGING ON KNEES ',
         bubble: "PLEASE JOIN THE MATCH! HELP ME SAVE THIS LOOT PLEASE!",
-        subtext: "Begging on knees holding a 'NEED PLAYER 2' sign!",
+        subtext: "Begging on knees holding a 'NEED SHOPPER 2' sign!",
       };
     }
   };
@@ -810,7 +810,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
         <div className="flex justify-between items-center border-b border-neutral-800 pb-4">
           <div>
             <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
-              {role === 'HOST' ? 'Lobby Host (Player 1)' : 'Lobby Partner (Player 2)'}
+              {role === 'HOST' ? 'Lobby Host (Shopper 1)' : 'Lobby Partner (Shopper 2)'}
             </span>
             <h1 className="text-xl font-black text-white mt-2">{lobby.item_name}</h1>
           </div>
@@ -820,12 +820,12 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           </div>
         </div>
 
-        {/* AVATAR SELECTOR BEFORE PAYING */}
+        {/* AVATAR SELECTOR - HIDDEN ONCE USER HAS PAID */}
         {!hasUserPaid && (
           <div className="bg-neutral-900/80 p-4 rounded-2xl border border-neutral-800 space-y-3">
             <div className="flex justify-between items-center">
               <label className="text-xs font-black uppercase text-amber-400 tracking-wider">
-                Choose Avatar ({role === 'HOST' ? 'Player 1' : 'Player 2'})
+                Choose Avatar ({role === 'HOST' ? 'Shopper 1' : 'Shopper 2'})
               </label>
               <span className="text-[10px] text-neutral-400 font-semibold">{selectedAvatar.role}</span>
             </div>
@@ -851,19 +851,19 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
 
         {/* CO-OP MATCHMAKING BOARD */}
         <div className="grid grid-cols-2 gap-3">
-          {/* PLAYER 1 SLOT */}
+          {/* SHOPPER 1 SLOT */}
           <div className="bg-neutral-900/90 border border-amber-500/30 p-4 rounded-2xl text-center space-y-2 relative">
-            <div className="text-[10px] font-black uppercase tracking-wider text-amber-400">Player 1 (Host)</div>
+            <div className="text-[10px] font-black uppercase tracking-wider text-amber-400">Shopper 1 (Host)</div>
             <div className="text-4xl my-1">{role === 'HOST' ? selectedAvatar.icon : ''}</div>
-            <div className="text-xs font-bold text-white">{role === 'HOST' ? selectedAvatar.name : 'Host Player'}</div>
+            <div className="text-xs font-bold text-white">{role === 'HOST' ? selectedAvatar.name : 'Host Shopper'}</div>
             <div className="text-[10px] text-emerald-400 font-semibold">
               {lobby.host_payment_intent_id ? '✓ READY TO SPLIT' : 'SELECTING HOLD'}
             </div>
           </div>
 
-          {/* PLAYER 2 SLOT */}
+          {/* SHOPPER 2 SLOT */}
           <div className="bg-neutral-900/90 border border-neutral-800 p-4 rounded-2xl text-center space-y-2">
-            <div className="text-[10px] font-black uppercase tracking-wider text-neutral-500">Player 2 (Partner)</div>
+            <div className="text-[10px] font-black uppercase tracking-wider text-neutral-500">Shopper 2 (Partner)</div>
             <div className="text-4xl my-1">{role === 'PARTNER' ? selectedAvatar.icon : ''}</div>
             <div className="text-xs font-bold text-neutral-400">
               {role === 'PARTNER' ? selectedAvatar.name : 'Waiting for Partner...'}
@@ -901,7 +901,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
 
               {currentStage.stage === 'begging' && (
                 <div className="mt-1 bg-amber-200 text-black text-[9px] font-black px-2 py-0.5 rounded border border-amber-400 rotate-[-2deg] shadow-md">
-                  NEED PLAYER 2 TO SAVE LOOT
+                  NEED SHOPPER 2 TO SAVE LOOT
                 </div>
               )}
             </div>
