@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, memo } from 'react';
+import Link from 'next/link';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { toast } from 'sonner';
@@ -301,7 +302,6 @@ const CheckoutForm = memo(function CheckoutForm({
         </div>
       )}
 
-      {/* AVATAR WALK DOWN ANIMATION (ENABLED FOR BOTH PLAYER 1 AND PLAYER 2) */}
       {avatarStage !== 'idle' && (
         <div className="flex flex-col items-center justify-center pt-2">
           <div
@@ -314,7 +314,6 @@ const CheckoutForm = memo(function CheckoutForm({
             </div>
             <div className="bg-amber-400 text-black text-[11px] font-black px-3.5 py-2 rounded-xl shadow-xl border border-amber-300 flex items-center gap-1.5">
               <span>Click here when ready to save some money!</span>
-              <span className="text-base"></span>
             </div>
           </div>
         </div>
@@ -386,13 +385,12 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
 
   const intentIdRef = useRef<string | null>(null);
 
-  // ENSURED ZIP & STATE START COMPLETELY EMPTY FOR BOTH HOST AND PARTNER
   const [formData, setFormData] = useState<AddressData>({
     name: '',
     street1: '',
     city: '',
     state: '',
-    zip: '', // Explicitly empty string for manual entry
+    zip: '',
     phone: '',
   });
 
@@ -417,7 +415,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
-  // TRIGGER AVATAR WALK SEQUENCE FOR BOTH PLAYER 1 AND PLAYER 2
   const triggerWalkSequence = (av: typeof AVATAR_ROSTER[0]) => {
     setSelectedAvatar(av);
     if (typeof window !== 'undefined') {
@@ -610,7 +607,18 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     const totalSaved = originalPrice - splitBase;
 
     return (
-      <div className="min-h-[100dvh] bg-black text-white flex items-center justify-center p-4">
+      <div className="min-h-[100dvh] bg-black text-white flex flex-col items-center justify-center p-4 space-y-4">
+        {/* EXPLORE NAVIGATION BANNER */}
+        <div className="max-w-md w-full flex justify-between items-center bg-neutral-900 border border-neutral-800 p-3.5 rounded-2xl">
+          <span className="text-xs text-neutral-400 font-medium">Looking for another deal?</span>
+          <Link
+            href="/explore"
+            className="text-xs font-bold text-amber-400 hover:text-amber-300 transition"
+          >
+            🔥 Explore Public Deals →
+          </Link>
+        </div>
+
         <div className="max-w-md w-full bg-neutral-950 border border-emerald-500/30 shadow-2xl rounded-3xl p-6 sm:p-8 text-center space-y-6">
           <div className="space-y-3">
             <div className="w-16 h-16 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-full flex items-center justify-center mx-auto text-3xl font-extrabold shadow-lg shadow-emerald-500/10">
@@ -723,6 +731,17 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
 
   return (
     <div className="min-h-[100dvh] bg-black text-white p-4 flex flex-col items-center justify-center">
+      {/* EXPLORE NAVIGATION BANNER AT TOP OF LOBBY */}
+      <div className="max-w-xl w-full mb-3 flex justify-between items-center bg-neutral-900 border border-neutral-800 p-3.5 rounded-2xl">
+        <span className="text-xs text-neutral-400 font-medium">Browse live BOGO matches nationwide:</span>
+        <Link
+          href="/explore"
+          className="text-xs font-extrabold text-amber-400 hover:text-amber-300 transition"
+        >
+          🔥 Explore Deals →
+        </Link>
+      </div>
+
       {/* KEYFRAME ANIMATIONS */}
       <style jsx global>{`
         @keyframes walkDown {
