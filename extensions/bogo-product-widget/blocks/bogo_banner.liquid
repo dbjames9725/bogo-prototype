@@ -1,0 +1,82 @@
+{% comment %}
+  BOGO Offer Banner Widget
+  Dynamically renders active BOGO promotions on online store product pages
+{% endcomment %}
+
+<div id="bogo-offer-container"
+     class="bogo-banner-wrapper"
+     data-product-id="{{ product.id }}"
+     data-shop="{{ shop.permanent_domain }}">
+     
+  <div id="bogo-offer-banner" style="display: none; padding: 16px; margin: 20px 0; background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; color: #166534; font-family: inherit;">
+    <div style="display: flex; align-items: flex-start; gap: 12px;">
+      <span style="font-size: 22px; line-height: 1;">🎁</span>
+      <div style="flex: 1;">
+        <strong id="bogo-offer-title" style="display: block; font-size: 16px; font-weight: 600; color: #14532d; margin-bottom: 4px;">
+          {{ block.settings.heading }}
+        </strong>
+        <span id="bogo-offer-details" style="display: block; font-size: 14px; color: #166534;">
+          Checking for available deals...
+        </span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function() {
+    const container = document.getElementById('bogo-offer-container');
+    if (!container) return;
+
+    const productId = container.getAttribute('data-product-id');
+    const shopDomain = container.getAttribute('data-shop');
+
+    if (!productId || !shopDomain) return;
+
+    // Fetch active campaign rules from Next.js backend API endpoint
+    fetch(`http://localhost:3000/api/offers?shop=${encodeURIComponent(shopDomain)}&product_id=${encodeURIComponent(productId)}`)
+      .then(response => {
+        if (!response.ok) throw new Error('Network response failed');
+        return response.json();
+      })
+      .then(data => {
+        if (data.success && data.campaigns && data.campaigns.length > 0) {
+          const activeCampaign = data.campaigns[0];
+         
+          const banner = document.getElementById('bogo-offer-banner');
+          const titleEl = document.getElementById('bogo-offer-title');
+          const detailsEl = document.getElementById('bogo-offer-details');
+
+          if (banner && titleEl && detailsEl) {
+            titleEl.innerText = activeCampaign.title;
+
+            const discountText = activeCampaign.discount_value === 100
+              ? 'FREE'
+              : `${activeCampaign.discount_value}% OFF`;
+
+            detailsEl.innerText = `Buy ${activeCampaign.buy_quantity}, get ${activeCampaign.get_quantity} at ${discountText}!`;
+            banner.style.display = 'block';
+          }
+        }
+      })
+      .catch(error => {
+        console.error('BOGO Extension Error:', error);
+      });
+  })();
+</script>
+
+{% schema %}
+{
+  "name": "BOGO Offer Banner",
+  "target": "section",
+  "settings": [
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Fallback Heading",
+      "default": "Special Offer Available!"
+    }
+  ]
+}
+{% endschema %}
+

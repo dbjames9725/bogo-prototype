@@ -1,0 +1,23 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "8f8fcdce9de3a64d5bb0404660f1018e"
+name = "BOGO Engine"
+application_url = "https://confined-cartoon-residency.ngrok-free.dev"
+embedded = false
+
+[build]
+automatically_update_urls_on_dev = true
+
+[webhooks]
+api_version = "2026-07"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_discounts,read_products,write_discounts,write_products"
+optional_scopes = [ ]
+use_legacy_install_flow = false
+
+[auth]
+redirect_urls = [
+  "https://confined-cartoon-residency.ngrok-free.dev/api/auth/callback"
+]

@@ -1,0 +1,71 @@
+{% comment %}
+  BOGO Offer Banner - Theme App Extension Block
+{% endcomment %}
+
+<div id="bogo-campaign-banner" class="bogo-banner-container" style="display: none; margin: 15px 0; padding: 16px; border: 2px dashed #008060; border-radius: 8px; background-color: #f4fbf7;">
+  <div style="display: flex; align-items: center; gap: 12px;">
+    <span style="font-size: 24px;">🎉</span>
+    <div>
+      <strong id="bogo-banner-title" style="display: block; font-size: 16px; color: #008060; font-family: inherit;">Special Promotion</strong>
+      <p id="bogo-banner-desc" style="margin: 4px 0 0 0; font-size: 14px; color: #333; font-family: inherit;"></p>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function() {
+    // 1. Get current product GID from Liquid
+    const currentProductId = "gid://shopify/Product/{{ product.id }}";
+    const shopDomain = "{{ shop.permanent_domain }}";
+
+    // 2. Set your production / tunnel app base URL
+    const appBaseUrl = "https://confined-cartoon-residency.ngrok-free.dev";
+
+    if (!currentProductId) return;
+
+    // 3. Fetch active BOGO campaigns from your Next.js API
+    fetch(`${appBaseUrl}/api/campaigns?shop=${encodeURIComponent(shopDomain)}`, {
+      headers: {
+        'ngrok-skip-browser-warning': 'true'
+      }
+    })
+      .then(response => response.json())
+      .then(data => {
+        if (!data.success || !data.campaigns || data.campaigns.length === 0) return;
+
+        // 4. Match campaign where current product is the trigger (buy_product_id)
+        const activeDeal = data.campaigns.find(campaign =>
+          campaign.buy_product_id === currentProductId && campaign.status === 'active'
+        );
+
+        if (activeDeal) {
+          const bannerEl = document.getElementById('bogo-campaign-banner');
+          const titleEl = document.getElementById('bogo-banner-title');
+          const descEl = document.getElementById('bogo-banner-desc');
+
+          titleEl.textContent = activeDeal.title;
+          descEl.textContent = `Buy ${activeDeal.buy_quantity} item(s), get ${activeDeal.get_quantity} additional reward item at ${activeDeal.discount_value}% off!`;
+         
+          bannerEl.style.display = 'block';
+        }
+      })
+      .catch(err => console.error('Error loading BOGO banner:', err));
+  })();
+</script>
+
+{% schema %}
+{
+  "name": "BOGO Promotion Banner",
+  "target": "section",
+  "class": "bogo-promotion-section",
+  "settings": [
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading Override",
+      "default": "Special Deal Available!"
+    }
+  ]
+}
+{% endschema %}
+
