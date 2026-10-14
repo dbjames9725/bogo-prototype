@@ -49,7 +49,13 @@ export default function HomePage() {
 
   const [itemName, setItemName] = useState<string>('Premium Noise-Canceling Headphones');
   const [activePrice, setActivePrice] = useState<number>(120);
-  const [dealType, setDealType] = useState<'BOGO_FREE' | 'BOGO_50'>('BOGO_FREE');
+  const [dealCategory, setDealCategory] = useState<'BOGO' | 'BULK_SPLIT'>('BOGO');
+  const [bogoMechanic, setBogoMechanic] = useState<'BOGO_FREE' | 'BOGO_50'>('BOGO_FREE');
+ 
+  // Bulk Multi-Pack State
+  const [totalUnits, setTotalUnits] = useState<number>(4);
+  const [offeredUnits, setOfferedUnits] = useState<number>(2);
+
   const [selectedState, setSelectedState] = useState<string>('NY');
   const [includeTax, setIncludeTax] = useState<boolean>(true);
   const [selectedAvatar, setSelectedAvatar] = useState(AVATAR_ROSTER[0]);
@@ -62,9 +68,17 @@ export default function HomePage() {
   const [avatarStage, setAvatarStage] = useState<'idle' | 'walking' | 'arrived'>('idle');
 
   const itemPrice = Math.max(0.01, activePrice);
-  const isBogo50 = dealType === 'BOGO_50';
+  const isBulk = dealCategory === 'BULK_SPLIT';
+
+  // Math engine calculations
+  const isBogo50 = bogoMechanic === 'BOGO_50';
   const bogoPromoTotal = isBogo50 ? itemPrice * 1.5 : itemPrice;
-  const yourSplitShare = bogoPromoTotal / 2;
+ 
+  const unitPrice = isBulk ? itemPrice / (totalUnits || 1) : bogoPromoTotal / 2;
+  const hostUnits = Math.max(1, totalUnits - offeredUnits);
+
+  const yourSplitShare = isBulk ? unitPrice * hostUnits : bogoPromoTotal / 2;
+  const partnerShareBase = isBulk ? unitPrice * offeredUnits : bogoPromoTotal / 2;
 
   const platformFee = Math.round(yourSplitShare * 0.025 * 100) / 100;
   const stateInfo = STATE_TAX_RATES[selectedState] || { name: 'Default', rate: 0.0853 };
@@ -87,6 +101,12 @@ export default function HomePage() {
     setIsCreatingLobby(true);
     setErrorMessage('');
 
+    if (isBulk && offeredUnits >= totalUnits) {
+      setErrorMessage('Units offered to partner must be less than total bundle units.');
+      setIsCreatingLobby(false);
+      return;
+    }
+
     try {
       const res = await fetch('/api/create-lobby', {
         method: 'POST',
@@ -94,7 +114,9 @@ export default function HomePage() {
         body: JSON.stringify({
           itemName,
           itemPrice,
-          dealType,
+          dealType: isBulk ? 'BULK_SPLIT' : bogoMechanic,
+          totalUnits: isBulk ? totalUnits : 2,
+          offeredUnits: isBulk ? offeredUnits : 1,
           durationMinutes: selectedDuration,
           userState: selectedState,
           includeTax,
@@ -167,10 +189,10 @@ export default function HomePage() {
         {/* GAMIFIED HEADER */}
         <div className="text-center space-y-2">
           <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-black text-xs font-black uppercase tracking-widest shadow-md shadow-amber-500/10">
-            <span>⚔️ CO-OP BOGO SIMULATOR</span>
+            <span>⚔️ CO-OP BOGO & BULK SIMULATOR</span>
           </div>
           <h1 className="text-3xl font-black tracking-tight text-white sm:text-4xl uppercase">
-            SPLIT ANY DEAL 50/50
+            SPLIT ANY DEAL OR BULK ITEM
           </h1>
           <p className="text-xs text-neutral-400">
             Calculate exact split shares, state taxes, and summon Shopper 2 in real time.
@@ -179,6 +201,46 @@ export default function HomePage() {
 
         <div className="bg-neutral-950 border border-neutral-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 relative overflow-hidden">
 
+          {/* FORMAT SELECTION (BOGO vs BULK SPLIT) */}
+          <div className="space-y-2">
+            <label className="text-xs font-black uppercase text-amber-400 tracking-wider block">
+              Select Deal Format
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setDealCategory('BOGO')}
+                className={`p-4 rounded-2xl border text-left transition cursor-pointer ${
+                  dealCategory === 'BOGO'
+                    ? 'border-amber-400 bg-amber-500/20 text-white shadow-lg shadow-amber-500/10'
+                    : 'border-neutral-800 bg-neutral-900 text-neutral-400 hover:border-neutral-700'
+                }`}
+              >
+                <div className="text-xl mb-1">🎁</div>
+                <div className="font-extrabold text-xs text-white">50/50 BOGO Deal</div>
+                <div className="text-[10px] text-neutral-400 mt-0.5">
+                  Split a standard BOGO store deal with 1 shopper.
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDealCategory('BULK_SPLIT')}
+                className={`p-4 rounded-2xl border text-left transition cursor-pointer ${
+                  dealCategory === 'BULK_SPLIT'
+                    ? 'border-emerald-400 bg-emerald-500/20 text-white shadow-lg shadow-emerald-500/10'
+                    : 'border-neutral-800 bg-neutral-900 text-neutral-400 hover:border-neutral-700'
+                }`}
+              >
+                <div className="text-xl mb-1">📦</div>
+                <div className="font-extrabold text-xs text-white">Bulk Multi-Pack Split</div>
+                <div className="text-[10px] text-neutral-400 mt-0.5">
+                  Split a multi-unit bundle (Costco, Amazon bulk) with others.
+                </div>
+              </button>
+            </div>
+          </div>
+
           {/* ITEM NAME INPUT */}
           <div className="space-y-2">
             <label className="text-xs font-black uppercase text-amber-400 tracking-wider block">
@@ -186,7 +248,7 @@ export default function HomePage() {
             </label>
             <input
               type="text"
-              placeholder="Enter product title..."
+              placeholder={isBulk ? "e.g. Costco Sonicare Toothbrush 4-Pack" : "e.g. Premium Noise-Canceling Headphones"}
               value={itemName}
               onChange={(e) => setItemName(e.target.value)}
               className="w-full p-3 bg-neutral-900 border border-neutral-800 rounded-xl text-sm font-semibold text-white placeholder-neutral-600 focus:outline-none focus:ring-2 focus:ring-amber-400"
@@ -197,10 +259,10 @@ export default function HomePage() {
           <div className="space-y-3">
             <div className="flex justify-between items-center">
               <label className="text-xs font-black uppercase text-amber-400 tracking-wider">
-                Retail Price ($USD)
+                Total Price ($USD)
               </label>
               <span className="text-xs font-extrabold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full">
-                Save {isBogo50 ? '25%' : '50%'} Per Item
+                {isBulk ? `~$${unitPrice.toFixed(2)} / Unit` : `Save ${isBogo50 ? '25%' : '50%'} Per Item`}
               </span>
             </div>
 
@@ -242,36 +304,90 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* DEAL MECHANICS SELECTOR */}
-          <div className="space-y-2">
-            <label className="text-xs font-black uppercase text-amber-400 tracking-wider block">
-              Select Deal Mechanics
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setDealType('BOGO_FREE')}
-                className={`py-3 px-3 rounded-xl text-xs font-black uppercase border transition cursor-pointer ${
-                  dealType === 'BOGO_FREE'
-                    ? 'bg-amber-400 text-black border-amber-400 shadow-md shadow-amber-400/10'
-                    : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:bg-neutral-800'
-                }`}
-              >
-                Buy 1 Get 1 FREE
-              </button>
-              <button
-                type="button"
-                onClick={() => setDealType('BOGO_50')}
-                className={`py-3 px-3 rounded-xl text-xs font-black uppercase border transition cursor-pointer ${
-                  dealType === 'BOGO_50'
-                    ? 'bg-amber-400 text-black border-amber-400 shadow-md shadow-amber-400/10'
-                    : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:bg-neutral-800'
-                }`}
-              >
-                Buy 1 Get 1 50% OFF
-              </button>
+          {/* CONDITIONAL: BULK SPLIT CONFIGURATION */}
+          {isBulk ? (
+            <div className="bg-neutral-900 border border-neutral-800 p-4 rounded-2xl space-y-3 text-xs">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 border-b border-neutral-800 pb-1.5">
+                Multi-Pack Bundle Breakdown
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-neutral-300 mb-1">
+                    Total Units in Bundle
+                  </label>
+                  <input
+                    type="number"
+                    min="2"
+                    max="20"
+                    value={totalUnits}
+                    onChange={(e) => setTotalUnits(parseInt(e.target.value) || 2)}
+                    className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-neutral-300 mb-1">
+                    Units Offered to Partner
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max={totalUnits - 1}
+                    value={offeredUnits}
+                    onChange={(e) => setOfferedUnits(parseInt(e.target.value) || 1)}
+                    className="w-full p-2.5 text-sm border border-neutral-800 rounded-lg bg-neutral-950 text-white font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="bg-neutral-950 p-3 rounded-xl border border-neutral-800 space-y-1 text-[11px]">
+                <div className="flex justify-between text-neutral-400">
+                  <span>Calculated Per-Unit Price:</span>
+                  <span className="font-mono text-white">${unitPrice.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-neutral-400">
+                  <span>You Keep ({hostUnits} Units):</span>
+                  <span className="font-mono text-white">${yourSplitShare.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-emerald-400 font-bold">
+                  <span>Partner Share ({offeredUnits} Units):</span>
+                  <span className="font-mono">${partnerShareBase.toFixed(2)}</span>
+                </div>
+              </div>
             </div>
-          </div>
+          ) : (
+            /* CONDITIONAL: BOGO MECHANICS SELECTOR */
+            <div className="space-y-2">
+              <label className="text-xs font-black uppercase text-amber-400 tracking-wider block">
+                Select Deal Mechanics
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setBogoMechanic('BOGO_FREE')}
+                  className={`py-3 px-3 rounded-xl text-xs font-black uppercase border transition cursor-pointer ${
+                    bogoMechanic === 'BOGO_FREE'
+                      ? 'bg-amber-400 text-black border-amber-400 shadow-md shadow-amber-400/10'
+                      : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:bg-neutral-800'
+                  }`}
+                >
+                  Buy 1 Get 1 FREE
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBogoMechanic('BOGO_50')}
+                  className={`py-3 px-3 rounded-xl text-xs font-black uppercase border transition cursor-pointer ${
+                    bogoMechanic === 'BOGO_50'
+                      ? 'bg-amber-400 text-black border-amber-400 shadow-md shadow-amber-400/10'
+                      : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:bg-neutral-800'
+                  }`}
+                >
+                  Buy 1 Get 1 50% OFF
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* TIMER DURATION SELECTION PILLS */}
           <div className="space-y-2">
@@ -347,13 +463,15 @@ export default function HomePage() {
             </div>
 
             <div className="flex justify-between text-neutral-400">
-              <span>BOGO Promo Total (Pre-tax)</span>
-              <span className="font-mono text-neutral-300">${bogoPromoTotal.toFixed(2)}</span>
+              <span>{isBulk ? 'Multi-Pack Bundle Price' : 'BOGO Promo Total (Pre-tax)'}</span>
+              <span className="font-mono text-neutral-300">${(isBulk ? itemPrice : bogoPromoTotal).toFixed(2)}</span>
             </div>
 
             <div className="flex justify-between text-neutral-300 pt-2 border-t border-neutral-800">
               <div>
-                <span className="block font-extrabold text-white">Your Shopper 1 Share</span>
+                <span className="block font-extrabold text-white">
+                  Your Shopper 1 Share {isBulk && `(${hostUnits} Units)`}
+                </span>
                 <span className="text-[10px] text-neutral-500">Base split cost (Pre-tax)</span>
               </div>
               <span className="font-black text-emerald-400 text-base font-mono">
@@ -455,4 +573,3 @@ export default function HomePage() {
     </main>
   );
 }
-

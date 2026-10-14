@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, useRef, memo } from 'react';
 import Link from 'next/link';
+import LobbyChat from '@/components/LobbyChat';
+import GroupBulkMeter from '@/components/GroupBulkMeter';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { toast } from 'sonner';
@@ -47,7 +49,10 @@ export interface LobbyData {
   item_price: number;
   total_price: number;
   deal_type: string;
+  total_units?: number;
+  offered_units?: number;
   status: string;
+  fulfillment_strategy?: 'DUAL_DIRECT' | 'HOST_RELAY';
   expires_at?: string;
   duration_minutes?: number;
   host_payment_intent_id?: string;
@@ -57,12 +62,16 @@ export interface LobbyData {
   user_a_address?: AddressData;
   user_b_address?: AddressData;
   host_avatar?: string;
+  shipping_label_url?: string;
+  tracking_number_a?: string;
+  tracking_number_b?: string;
 }
 
 const CheckoutForm = memo(function CheckoutForm({
   lobbyId,
   role,
   basePrice,
+  fulfillmentStrategy,
   formData,
   isUpdating,
   avatarStage,
@@ -74,6 +83,7 @@ const CheckoutForm = memo(function CheckoutForm({
   lobbyId: string;
   role: 'HOST' | 'PARTNER';
   basePrice: number;
+  fulfillmentStrategy: 'DUAL_DIRECT' | 'HOST_RELAY';
   formData: AddressData;
   isUpdating: boolean;
   avatarStage: 'idle' | 'walking' | 'arrived';
@@ -92,9 +102,10 @@ const CheckoutForm = memo(function CheckoutForm({
   const platformFee = Math.round(splitShare * 0.025 * 100) / 100;
   const taxRate = STATE_TAX_RATES[formData.state] ?? 0.0853;
   const calculatedTax = Math.round(splitShare * taxRate * 100) / 100;
-  const stripeFee = Math.round((splitShare * 0.029 + 0.30) * 100) / 100;
+  const relayLabelFee = fulfillmentStrategy === 'HOST_RELAY' && role === 'PARTNER' ? 4.99 : 0;
+  const stripeFee = Math.round(((splitShare + relayLabelFee) * 0.029 + 0.30) * 100) / 100;
 
-  const totalAmountCharged = splitShare + calculatedTax + platformFee + stripeFee;
+  const totalAmountCharged = splitShare + calculatedTax + platformFee + relayLabelFee + stripeFee;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -159,7 +170,7 @@ const CheckoutForm = memo(function CheckoutForm({
           const confirmRes = await fetch('/api/confirm-match', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ lobbyId }),
+            body: JSON.stringify({ lobbyId, fulfillmentStrategy }),
           });
 
           if (!confirmRes.ok) {
@@ -267,7 +278,7 @@ const CheckoutForm = memo(function CheckoutForm({
           </div>
         )}
         <div className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 border-b border-neutral-800 pb-1.5">
-          Hold Breakdown
+          Hold Breakdown ({fulfillmentStrategy === 'DUAL_DIRECT' ? 'Strategy 1: Dual Direct' : 'Strategy 2: Host Relay'})
         </div>
         <div className="flex justify-between text-neutral-300">
           <span>{role === 'HOST' ? 'Shopper 1 (Host)' : 'Shopper 2 (Partner)'} Base Share (50% Off):</span>
@@ -277,6 +288,12 @@ const CheckoutForm = memo(function CheckoutForm({
           <span>Platform Fee (2.5% Retail Split):</span>
           <span className="font-mono text-neutral-300">+${platformFee.toFixed(2)}</span>
         </div>
+        {relayLabelFee > 0 && (
+          <div className="flex justify-between text-amber-400 font-semibold">
+            <span>Prepaid EasyPost Shipping Label Fee:</span>
+            <span className="font-mono">+${relayLabelFee.toFixed(2)}</span>
+          </div>
+        )}
         <div className="flex justify-between text-neutral-400">
           <span>Estimated Sales Tax ({formData.state || 'N/A'}):</span>
           <span className="font-mono text-neutral-300">+${calculatedTax.toFixed(2)}</span>
@@ -336,6 +353,7 @@ const StripeCheckoutWrapper = memo(function StripeCheckoutWrapper({
   lobbyId,
   role,
   basePrice,
+  fulfillmentStrategy,
   clientSecret,
   formData,
   isUpdating,
@@ -348,6 +366,7 @@ const StripeCheckoutWrapper = memo(function StripeCheckoutWrapper({
   lobbyId: string;
   role: 'HOST' | 'PARTNER';
   basePrice: number;
+  fulfillmentStrategy: 'DUAL_DIRECT' | 'HOST_RELAY';
   clientSecret: string;
   formData: AddressData;
   isUpdating: boolean;
@@ -363,6 +382,7 @@ const StripeCheckoutWrapper = memo(function StripeCheckoutWrapper({
         lobbyId={lobbyId}
         role={role}
         basePrice={basePrice}
+        fulfillmentStrategy={fulfillmentStrategy}
         formData={formData}
         isUpdating={isUpdating}
         avatarStage={avatarStage}
@@ -379,6 +399,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
   const [lobby, setLobby] = useState<LobbyData | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [role, setRole] = useState<'HOST' | 'PARTNER'>('PARTNER');
+  const [fulfillmentStrategy, setFulfillmentStrategy] = useState<'DUAL_DIRECT' | 'HOST_RELAY'>('HOST_RELAY');
   const [isUpdatingIntent, setIsUpdatingIntent] = useState<boolean>(false);
   const [selectedAvatar, setSelectedAvatar] = useState(AVATAR_ROSTER[0]);
   const [hasChosenAvatar, setHasChosenAvatar] = useState<boolean>(false);
@@ -404,7 +425,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
 
   const isSubmittingRef = useRef<boolean>(false);
 
-  // Dynamic expiration countdown calculation against lobby.expires_at
   useEffect(() => {
     if (!lobby?.expires_at) return;
 
@@ -426,7 +446,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     return () => clearInterval(timerInterval);
   }, [lobby?.expires_at, lobby?.status]);
 
-  // Secondary ticker for animated begging stage escalation
   useEffect(() => {
     const stageInterval = setInterval(() => {
       setWaitingSeconds((prev) => prev + 1);
@@ -462,7 +481,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     }, 1200);
   };
 
-  const createOrUpdatePaymentIntent = async (currentRole: 'HOST' | 'PARTNER', state: string) => {
+  const createOrUpdatePaymentIntent = async (currentRole: 'HOST' | 'PARTNER', state: string, strategy: 'DUAL_DIRECT' | 'HOST_RELAY') => {
     setIsUpdatingIntent(true);
     try {
       const res = await fetch('/api/create-payment-intent', {
@@ -471,6 +490,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
         body: JSON.stringify({
           lobbyId,
           role: currentRole,
+          fulfillmentStrategy: strategy,
           userState: state || 'NY',
           paymentIntentId: intentIdRef.current,
         }),
@@ -498,6 +518,9 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     }
 
     setLobby(data);
+    if (data.fulfillment_strategy) {
+      setFulfillmentStrategy(data.fulfillment_strategy);
+    }
 
     const isHostStored =
       typeof window !== 'undefined' && localStorage.getItem(`hosted_${lobbyId}`) === 'true';
@@ -520,7 +543,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
       currentRole === 'HOST' ? !!data.host_payment_intent_id : !!data.partner_payment_intent_id;
 
     if (!hasUserPaid && data.status !== 'MATCHED' && !clientSecret) {
-      await createOrUpdatePaymentIntent(currentRole, formData.state);
+      await createOrUpdatePaymentIntent(currentRole, formData.state, data.fulfillment_strategy || fulfillmentStrategy);
     }
     setLoading(false);
   };
@@ -529,10 +552,18 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     setFormData((prev) => {
       const updated = { ...prev, [field]: value };
       if (field === 'state' && value !== prev.state && lobby && role) {
-        createOrUpdatePaymentIntent(role, value);
+        createOrUpdatePaymentIntent(role, value, fulfillmentStrategy);
       }
       return updated;
     });
+  };
+
+  const handleStrategyChange = async (newStrategy: 'DUAL_DIRECT' | 'HOST_RELAY') => {
+    setFulfillmentStrategy(newStrategy);
+    if (role === 'HOST') {
+      await supabase.from('lobbies').update({ fulfillment_strategy: newStrategy }).eq('id', lobbyId);
+    }
+    await createOrUpdatePaymentIntent(role, formData.state, newStrategy);
   };
 
   useEffect(() => {
@@ -553,6 +584,10 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
 
           setLobby((prevLobby) => {
             if (prevLobby) {
+              if (updatedLobby.fulfillment_strategy && updatedLobby.fulfillment_strategy !== prevLobby.fulfillment_strategy) {
+                setFulfillmentStrategy(updatedLobby.fulfillment_strategy);
+              }
+
               if (!prevLobby.partner_payment_intent_id && updatedLobby.partner_payment_intent_id) {
                 toast.success('🎉 Shopper 2 joined! Authorizing shared payment holds...', {
                   duration: 5000,
@@ -560,7 +595,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
               }
 
               if (prevLobby.status !== 'MATCHED' && updatedLobby.status === 'MATCHED') {
-                toast.success('⚡ Co-Op Match Confirmed! Virtual card generated.', {
+                toast.success('⚡ Co-Op Match Confirmed! Fulfillment pipeline active.', {
                   duration: 6000,
                 });
               }
@@ -602,7 +637,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
         await navigator.share(shareData);
         return;
       } catch (err) {
-        // User closed native share sheet
+        // Native share dismissed
       }
     }
 
@@ -643,14 +678,14 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
     const userState = userAddress?.state || formData.state;
     const stateTaxRate = STATE_TAX_RATES[userState] ?? 0.0853;
     const calculatedTax = Math.round(splitBase * stateTaxRate * 100) / 100;
-    const stripeFee = Math.round((splitBase * 0.029 + 0.30) * 100) / 100;
+    const relayLabelFee = fulfillmentStrategy === 'HOST_RELAY' && role === 'PARTNER' ? 4.99 : 0;
+    const stripeFee = Math.round(((splitBase + relayLabelFee) * 0.029 + 0.30) * 100) / 100;
 
-    const totalPaidWithTax = splitBase + calculatedTax + platformFee + stripeFee;
+    const totalPaidWithTax = splitBase + calculatedTax + platformFee + relayLabelFee + stripeFee;
     const totalSaved = originalPrice - splitBase;
 
     return (
       <div className="min-h-[100dvh] bg-black text-white flex flex-col items-center justify-center p-4 space-y-4">
-        {/* EXPLORE NAVIGATION BANNER */}
         <div className="max-w-md w-full flex justify-between items-center bg-neutral-900 border border-neutral-800 p-3.5 rounded-2xl">
           <span className="text-xs text-neutral-400 font-medium">Looking for another deal?</span>
           <Link
@@ -677,15 +712,58 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
             </div>
           </div>
 
-          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 text-left flex justify-between items-center">
-            <div>
-              <div className="text-[10px] uppercase font-extrabold text-neutral-400 tracking-wider">Item Purchased</div>
-              <div className="text-sm font-bold text-white mt-0.5">{lobby.item_name}</div>
+          {/* BULK METER DISPLAY IF BULK SPLIT */}
+          {lobby.deal_type === 'BULK_SPLIT' && (
+            <GroupBulkMeter
+              totalUnits={lobby.total_units || 2}
+              offeredUnits={lobby.offered_units || 1}
+              unitPrice={(Number(lobby.item_price) || 0) / (lobby.total_units || 2)}
+              compact={false}
+            />
+          )}
+
+          {/* FULFILLMENT / SHIPPING TRACKING CARD */}
+          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 text-left space-y-3">
+            <div className="flex justify-between items-center border-b border-neutral-800 pb-2">
+              <span className="text-[10px] font-black uppercase tracking-wider text-amber-400">
+                Fulfillment Route: {fulfillmentStrategy === 'DUAL_DIRECT' ? 'Dual Merchant Sub-Orders' : 'Host Relay Delivery'}
+              </span>
+              <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded font-bold">
+                ACTIVE
+              </span>
             </div>
-            <div className="text-right">
-              <div className="text-[10px] uppercase font-bold text-neutral-500">Retail Price</div>
-              <div className="text-xs font-semibold text-neutral-400 line-through">${originalPrice.toFixed(2)}</div>
-            </div>
+
+            {fulfillmentStrategy === 'HOST_RELAY' ? (
+              <div className="space-y-2 text-xs">
+                <p className="text-neutral-300">
+                  {role === 'HOST'
+                    ? '📦 Master BOGO package is shipping to your address. Please use the prepaid label below to drop off Shopper 2’s item at UPS/USPS.'
+                    : '🚚 Master BOGO package is heading to Shopper 1 (Host). Once received, your item will dispatch via prepaid EasyPost priority relay.'}
+                </p>
+                {role === 'HOST' && lobby.shipping_label_url && (
+                  <a
+                    href={lobby.shipping_label_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-block w-full text-center py-2.5 bg-amber-400 hover:bg-amber-300 text-black font-black text-xs rounded-xl shadow transition"
+                  >
+                    📄 Download Prepaid Shipping Label PDF
+                  </a>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2 text-xs text-neutral-300">
+                <p>
+                  🚀 Dual API Sub-Orders generated. Both items are shipping independently directly from the retailer to your respective addresses.
+                </p>
+                <div className="flex justify-between font-mono text-[11px] bg-neutral-950 p-2 rounded border border-neutral-800">
+                  <span>Your Tracking #:</span>
+                  <span className="text-emerald-400">
+                    {role === 'HOST' ? lobby.tracking_number_a || 'TRK_HOST_PENDING' : lobby.tracking_number_b || 'TRK_PARTNER_PENDING'}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="bg-neutral-900/60 border border-neutral-800/80 rounded-2xl p-4 text-left space-y-2.5 text-xs">
@@ -707,6 +785,13 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
               <span className="text-neutral-400">Platform Fee (2.5% Retail Split):</span>
               <span className="font-mono text-neutral-300">+${platformFee.toFixed(2)}</span>
             </div>
+
+            {relayLabelFee > 0 && (
+              <div className="flex justify-between text-amber-400">
+                <span>Prepaid EasyPost Shipping Label Fee:</span>
+                <span className="font-mono">+${relayLabelFee.toFixed(2)}</span>
+              </div>
+            )}
 
             <div className="flex justify-between text-neutral-300">
               <span className="text-neutral-400">Sales Tax ({userState}):</span>
@@ -736,6 +821,13 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
               <span>Order queued for fulfillment with virtual card #{lobby.issuing_card_id || 'ic_active'}</span>
             </div>
           </div>
+
+          {/* REAL-TIME LOBBY CHAT (CONFIRMED MATCH) */}
+          <LobbyChat
+            lobbyId={lobbyId}
+            currentUserId={role === 'HOST' ? 'host_user' : 'partner_user'}
+            currentUserName={role === 'HOST' ? 'Host (Shopper 1)' : 'Partner (Shopper 2)'}
+          />
         </div>
       </div>
     );
@@ -770,7 +862,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
 
   return (
     <div className="min-h-[100dvh] bg-black text-white p-4 flex flex-col items-center justify-center">
-      {/* EXPLORE NAVIGATION BANNER AT TOP OF LOBBY */}
       <div className="max-w-xl w-full mb-3 flex justify-between items-center bg-neutral-900 border border-neutral-800 p-3.5 rounded-2xl">
         <span className="text-xs text-neutral-400 font-medium">Browse live BOGO matches nationwide:</span>
         <Link
@@ -781,7 +872,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
         </Link>
       </div>
 
-      {/* KEYFRAME ANIMATIONS */}
       <style jsx global>{`
         @keyframes walkDown {
           0% {
@@ -792,7 +882,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
             transform: translateY(-180px) scale(1.1) rotate(-8deg);
           }
           50% {
-            transform: translateY(-120px) scale(1) rotate(8deg);
+            transform: translateY(-120px) scale(1.2) rotate(8deg);
           }
           75% {
             transform: translateY(-60px) scale(1.1) rotate(-8deg);
@@ -859,7 +949,56 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           </div>
         </div>
 
-        {/* AVATAR SELECTOR - HIDDEN ONCE USER SELECTIONS OR PAYMENT OCCURS */}
+        {/* BULK METER DISPLAY IF BULK SPLIT */}
+        {lobby.deal_type === 'BULK_SPLIT' && (
+          <GroupBulkMeter
+            totalUnits={lobby.total_units || 2}
+            offeredUnits={lobby.offered_units || 1}
+            unitPrice={(Number(lobby.item_price) || 0) / (lobby.total_units || 2)}
+            compact={false}
+          />
+        )}
+
+        {/* FULFILLMENT STRATEGY SELECTOR TOGGLE */}
+        {!hasUserPaid && (
+          <div className="bg-neutral-900/80 p-4 rounded-2xl border border-neutral-800 space-y-2">
+            <label className="text-xs font-black uppercase text-neutral-300 tracking-wider block">
+              Fulfillment Method Selection
+            </label>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <button
+                type="button"
+                onClick={() => handleStrategyChange('HOST_RELAY')}
+                className={`p-3 rounded-xl border text-left transition cursor-pointer ${
+                  fulfillmentStrategy === 'HOST_RELAY'
+                    ? 'border-amber-400 bg-amber-500/20 text-white font-bold'
+                    : 'border-neutral-800 bg-neutral-950/60 text-neutral-400 hover:border-neutral-700'
+                }`}
+              >
+                <div className="font-extrabold text-[11px] mb-0.5">📦 Strategy 2: Host Relay</div>
+                <div className="text-[10px] opacity-80 leading-snug">
+                  Full order ships to Host. Prepaid EasyPost label provided for Shopper 2 dispatch. (100% store compatibility)
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleStrategyChange('DUAL_DIRECT')}
+                className={`p-3 rounded-xl border text-left transition cursor-pointer ${
+                  fulfillmentStrategy === 'DUAL_DIRECT'
+                    ? 'border-amber-400 bg-amber-500/20 text-white font-bold'
+                    : 'border-neutral-800 bg-neutral-950/60 text-neutral-400 hover:border-neutral-700'
+                }`}
+              >
+                <div className="font-extrabold text-[11px] mb-0.5">🚀 Strategy 1: Dual Direct</div>
+                <div className="text-[10px] opacity-80 leading-snug">
+                  Two separate sub-orders placed directly to each address via merchant API.
+                </div>
+              </button>
+            </div>
+          </div>
+        )}
+
         {!hasChosenAvatar && !hasUserPaid && (
           <div className="bg-neutral-900/80 p-4 rounded-2xl border border-neutral-800 space-y-3">
             <div className="flex justify-between items-center">
@@ -888,9 +1027,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           </div>
         )}
 
-        {/* CO-OP MATCHMAKING BOARD */}
         <div className="grid grid-cols-2 gap-3">
-          {/* SHOPPER 1 SLOT */}
           <div className="bg-neutral-900/90 border border-amber-500/30 p-4 rounded-2xl text-center space-y-2 relative">
             <div className="text-[10px] font-black uppercase tracking-wider text-amber-400">Shopper 1 (Host)</div>
             <div className="text-4xl my-1">{role === 'HOST' ? selectedAvatar.icon : ''}</div>
@@ -900,7 +1037,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
             </div>
           </div>
 
-          {/* SHOPPER 2 SLOT */}
           <div className="bg-neutral-900/90 border border-neutral-800 p-4 rounded-2xl text-center space-y-2">
             <div className="text-[10px] font-black uppercase tracking-wider text-neutral-500">Shopper 2 (Partner)</div>
             <div className="text-4xl my-1">{role === 'PARTNER' ? selectedAvatar.icon : ''}</div>
@@ -913,7 +1049,6 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
           </div>
         </div>
 
-        {/* DRAMATIC MERCY-STYLE BEGGING LOBBY ANIMATION */}
         {role === 'HOST' && !lobby.partner_payment_intent_id && (
           <div className="bg-gradient-to-b from-neutral-900 via-neutral-950 to-black border border-amber-500/40 p-6 rounded-2xl text-center space-y-4 relative overflow-hidden shadow-xl">
             <span className="text-[9px] font-black uppercase tracking-widest text-black bg-amber-400 px-3 py-1 rounded-full shadow-md">
@@ -967,6 +1102,7 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
             lobbyId={lobbyId}
             role={role}
             basePrice={lobby.item_price}
+            fulfillmentStrategy={fulfillmentStrategy}
             clientSecret={clientSecret}
             formData={formData}
             isUpdating={isUpdatingIntent}
@@ -993,8 +1129,14 @@ export default function LobbyClientView({ lobbyId }: { lobbyId: string }) {
             <p className="text-xs text-neutral-400 animate-pulse">Initializing Stripe Checkout...</p>
           </div>
         )}
+
+        {/* REAL-TIME LOBBY CHAT (ACTIVE LOBBY) */}
+        <LobbyChat
+          lobbyId={lobbyId}
+          currentUserId={role === 'HOST' ? 'host_user' : 'partner_user'}
+          currentUserName={role === 'HOST' ? 'Host (Shopper 1)' : 'Partner (Shopper 2)'}
+        />
       </div>
     </div>
   );
 }
-
