@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import FeaturedStoreDeals from '@/components/FeaturedStoreDeals';
 
 const STATE_TAX_RATES: Record<string, { name: string; rate: number }> = {
   AL: { name: 'Alabama', rate: 0.0924 }, AK: { name: 'Alaska', rate: 0.0181 }, AZ: { name: 'Arizona', rate: 0.0837 },
@@ -175,15 +176,18 @@ export default function HomePage() {
 
       <div className="max-w-xl w-full mx-auto space-y-6 relative">
 
-        {/* TOP NAVIGATION BANNER */}
-        <div className="w-full flex justify-between items-center bg-neutral-900 border border-neutral-800 p-3.5 rounded-2xl">
-          <span className="text-xs text-neutral-400 font-medium">Looking for active deals?</span>
-          <Link
-            href="/explore"
-            className="text-xs font-bold text-amber-400 hover:text-amber-300 transition"
+        {/* TOP NAVIGATION BANNER WITH EXPLORE BUTTON */}
+        <div className="w-full flex flex-col sm:flex-row gap-3 justify-between items-center bg-neutral-900 border border-neutral-800 p-4 rounded-2xl shadow-xl">
+          <div className="text-center sm:text-left">
+            <span className="text-xs text-neutral-400 font-medium block">Looking for verified retail deals?</span>
+            <span className="text-sm font-bold text-white">Daily Ingested Store Offers</span>
+          </div>
+          <a
+            href="#bogo-deals"
+            className="w-full sm:w-auto text-center text-xs font-black bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:brightness-110 text-black px-4 py-2.5 rounded-xl transition shadow-md shadow-amber-500/10 cursor-pointer transform active:scale-95"
           >
-            🔥 Explore Public Deals →
-          </Link>
+            🔥 Click to Explore Today's BOGO Deals
+          </a>
         </div>
 
         {/* GAMIFIED HEADER */}
@@ -569,6 +573,12 @@ export default function HomePage() {
             {isCreatingLobby ? 'INITIALIZING MATCH...' : '🎮 LAUNCH CO-OP LOBBY'}
           </button>
         </div>
+
+        {/* FEATURED STORE DEALS COMPONENT SECTION TARGET */}
+        <div id="bogo-deals" className="scroll-mt-6 pt-4">
+          <FeaturedStoreDeals />
+        </div>
+
       </div>
     </main>
   );
